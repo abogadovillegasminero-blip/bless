@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: Arial; background:#f4f6f8; padding:40px; }
+        canvas { background:white; padding:20px; border-radius:10px; }
+    </style>
+</head>
+<body>
+
+<h1>📊 Dashboard General</h1>
+<canvas id="grafico" width="400" height="200"></canvas>
+
+<script>
+fetch("/resumen")
+.then(res => res.json())
+.then(data => {
+
+    new Chart(document.getElementById("grafico"), {
+        type: 'bar',
+        data: {
+            labels: ["Prestado", "Pagado", "Saldo"],
+            datasets: [{
+                label: "Valores",
+                data: [
+                    data.total_prestado,
+                    data.total_pagado,
+                    data.saldo_pendiente
+                ],
+                backgroundColor: ["#3498db","#2ecc71","#e74c3c"]
+            }]
+        }
+    });
+});
+</script>
+
+</body>
+</html>

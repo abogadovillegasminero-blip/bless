@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+    <h1>📊 Dashboard</h1>
+    <p>Gestión de clientes, pagos y reportes</p>
+</div>
+
+<div class="card">
+    <a href="/clientes"><button>👤 Clientes</button></a>
+    <a href="/pagos"><button>💰 Pagos</button></a>
+    <a href="/reportes"><button>📑 Reportes</button></a>
+    <a href="/saldos"><button>📈 Saldos</button></a>
+    <a href="/backup"><button>🗂 Backup</button></a>
+</div>
+
+{% endblock %}

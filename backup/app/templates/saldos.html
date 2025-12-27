@@ -1,0 +1,24 @@
+{% extends "layout.html" %}
+{% block body %}
+<h2>Saldos</h2>
+
+<table>
+<tr>
+  <th>Cliente</th>
+  <th>Monto</th>
+  <th>Pagado</th>
+  <th>Saldo</th>
+</tr>
+
+{% for c in clientes %}
+<tr style="background:{% if c.saldo == 0 %}#d1fae5{% else %}#fee2e2{% endif %}">
+  <td>{{ c.nombre }}</td>
+  <td>{{ c.monto }}</td>
+  <td>{{ c.pagado }}</td>
+  <td>{{ c.saldo }}</td>
+</tr>
+{% endfor %}
+</table>
+{% endblock %}
+<a class="btn" href="/reportes/excel">⬇ Excel</a>
+<a class="btn" href="/reportes/pdf">⬇ PDF</a>

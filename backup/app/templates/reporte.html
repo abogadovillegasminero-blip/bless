@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+<h2>Reporte General</h2>
+
+<ul>
+  <li>Total clientes: <strong>{{ resumen.total_clientes }}</strong></li>
+  <li>Al día: <strong>{{ resumen.al_dia }}</strong></li>
+  <li>En mora: <strong>{{ resumen.en_mora }}</strong></li>
+  <li>Total saldo: <strong>${{ resumen.total_saldo }}</strong></li>
+</ul>
+</div>
+
+{% endblock %}

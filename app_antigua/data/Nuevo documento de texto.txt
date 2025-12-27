@@ -1,0 +1,3 @@
+A1: cliente
+B1: monto
+C1: fecha

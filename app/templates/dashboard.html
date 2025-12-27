@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container mt-4">
+
+    <h2 class="mb-4 fw-bold">📊 Dashboard General</h2>
+
+    <!-- MÉTRICAS SUPERIORES -->
+    <div class="row g-3 mb-4">
+
+        <div class="col-md-4">
+            <div class="metric bg-success">
+                💵 Recaudado Hoy
+                <h3>${{ total_pagos }}</h3>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="metric bg-warning">
+                ⏳ Clientes Activos
+                <h3>{{ total_clientes }}</h3>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="metric bg-danger">
+                ⚠️ Saldos Pendientes
+                <h3>Revisar</h3>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- TARJETAS PRINCIPALES -->
+    <div class="row g-4">
+
+        <div class="col-md-3">
+            <div class="card dash-card text-center">
+                <div class="icon bg-primary">👥</div>
+                <h6>Clientes</h6>
+                <h2>{{ total_clientes }}</h2>
+                <a href="/clientes" class="btn btn-primary btn-sm">Ver</a>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card dash-card text-center">
+                <div class="icon bg-success">💰</div>
+                <h6>Pagos</h6>
+                <h2>{{ total_pagos }}</h2>
+                <a href="/pagos" class="btn btn-success btn-sm">Registrar</a>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card dash-card text-center">
+                <div class="icon bg-danger">📉</div>
+                <h6>Saldos</h6>
+                <h2>Control</h2>
+                <a href="/saldos" class="btn btn-danger btn-sm">Ver</a>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card dash-card text-center">
+                <div class="icon bg-dark">📄</div>
+                <h6>Reportes</h6>
+                <h2>Excel</h2>
+                <a href="/reportes/exportar" class="btn btn-dark btn-sm">Descargar</a>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card dash-card text-center">
+                <div class="icon bg-warning">🔒</div>
+                <h6>Backup</h6>
+                <h2>Seguro</h2>
+                <a href="/backup/manual" class="btn btn-warning btn-sm">Ejecutar</a>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+<hr class="my-4">
+
+<h4 class="mb-3">📈 Pagos por Día</h4>
+
+<canvas id="graficoPagos" height="120"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+fetch("/graficos/pagos")
+.then(res => res.json())
+.then(data => {
+    const labels = data.map(i => i.fecha)
+    const valores = data.map(i => i.valor)
+
+    new Chart(document.getElementById("graficoPagos"), {
+        type: "line",
+        data: {
+            labels: labels,
+            datasets: [{
+                label: "Pagos",
+                data: valores,
+                tension: 0.3,
+                fill: true
+            }]
+        }
+    })
+})
+</script>
+
+{% endblock %}

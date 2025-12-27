@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+    <h2>💳 Registrar Pago</h2>
+
+    <form method="post" action="/pagos" class="grid">
+        <input name="documento" placeholder="Documento del cliente" required>
+        <input name="fecha" type="date" required>
+        <input name="valor" type="number" placeholder="Valor pagado" required>
+
+        <button type="submit">💾 Guardar Pago</button>
+    </form>
+</div>
+
+<div class="card">
+    <h3>📄 Pagos registrados</h3>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Documento</th>
+                <th>Fecha</th>
+                <th>Valor</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in pagos %}
+            <tr>
+                <td>{{ p.documento }}</td>
+                <td>{{ p.fecha }}</td>
+                <td>${{ "{:,.0f}".format(p.valor) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}

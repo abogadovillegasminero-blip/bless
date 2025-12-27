@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Menú Principal</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #0f172a, #1e293b);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+        }
+        .container {
+            background: #020617;
+            padding: 40px;
+            border-radius: 14px;
+            width: 360px;
+            box-shadow: 0 20px 40px rgba(0,0,0,.4);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        a {
+            display: block;
+            text-decoration: none;
+            background: #2563eb;
+            color: white;
+            padding: 14px;
+            margin-bottom: 15px;
+            border-radius: 10px;
+            text-align: center;
+            font-size: 18px;
+            transition: .2s;
+        }
+        a:hover {
+            background: #1e40af;
+            transform: scale(1.03);
+        }
+        .logout {
+            background: #dc2626;
+        }
+        .logout:hover {
+            background: #991b1b;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Proyecto Bless</h1>
+
+    <a href="/clientes">👥 Clientes</a>
+    <a href="/pagos">💰 Pagos</a>
+    <a href="/reportes">📊 Reportes</a>
+
+    <a href="/logout" class="logout">🚪 Cerrar sesión</a>
+</div>
+
+</body>
+</html>

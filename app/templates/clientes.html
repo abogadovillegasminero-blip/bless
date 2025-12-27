@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<a href="/dashboard">📊 Dashboard</a>
+
+<h2>Clientes</h2>
+
+<form method="post" action="/clientes/guardar" class="card p-3 mb-4">
+  <div class="row">
+    <div class="col">
+      <input name="nombre" class="form-control" placeholder="Nombre" required>
+    </div>
+    <div class="col">
+      <input name="cedula" class="form-control" placeholder="Cédula" required>
+    </div>
+    <div class="col">
+      <input name="telefono" class="form-control" placeholder="Teléfono" required>
+    </div>
+  </div>
+
+  <div class="row mt-3">
+    <div class="col">
+      <input name="monto" type="number" class="form-control" placeholder="Monto" required>
+    </div>
+    <div class="col">
+      <select name="tipo_cobro" class="form-control" required>
+        <option value="">Tipo de cobro</option>
+        <option value="diario">Diario</option>
+        <option value="semanal">Semanal</option>
+      </select>
+    </div>
+    <div class="col">
+      <button class="btn btn-primary w-100">Guardar</button>
+    </div>
+  </div>
+</form>
+
+<table class="table table-bordered">
+  <thead>
+    <tr>
+      <th>Nombre</th>
+      <th>Cédula</th>
+      <th>Teléfono</th>
+      <th>Monto</th>
+      <th>Tipo cobro</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in clientes %}
+    <tr>
+      <td>{{ c.nombre }}</td>
+      <td>{{ c.cedula }}</td>
+      <td>{{ c.telefono }}</td>
+      <td>{{ c.monto }}</td>
+      <td>{{ c.tipo_cobro }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% endblock %}

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Gráficos</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial;
+            background: #f4f6f8;
+            padding: 30px;
+        }
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            max-width: 500px;
+            margin: auto;
+            box-shadow: 0 4px 12px rgba(0,0,0,.1);
+            text-align: center;
+        }
+        h2 { margin-bottom: 10px; }
+        .btn {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 16px;
+            background: #0066cc;
+            color: white;
+            border-radius: 8px;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>📊 Estado de clientes</h2>
+
+    <canvas id="grafico"></canvas>
+
+    <a href="/" class="btn">Volver</a>
+</div>
+
+<script>
+new Chart(document.getElementById("grafico"), {
+    type: "doughnut",
+    data: {
+        labels: ["Al día", "En mora"],
+        datasets: [{
+            data: [{{ data.aldia }}, {{ data.enmora }}],
+            backgroundColor: ["#2ecc71", "#e74c3c"]
+        }]
+    }
+});
+</script>
+
+</body>
+</html>

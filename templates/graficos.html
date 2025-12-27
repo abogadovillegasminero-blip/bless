@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h3 class="mb-4">📊 Resumen General</h3>
+
+<div class="card shadow p-3">
+    <img src="{{ url_for('graficos_resumen') }}">
+</div>
+
+{% endblock %}

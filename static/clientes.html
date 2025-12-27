@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Registro de Clientes</title>
+</head>
+<body>
+    <h2>Registrar Cliente</h2>
+
+    <form method="post" action="/clientes">
+        <label>Nombre:</label><br>
+        <input type="text" name="nombre" required><br><br>
+
+        <label>Monto:</label><br>
+        <input type="number" name="monto" required><br><br>
+
+        <label>Tipo de cobro:</label><br>
+        <select name="tipo_cobro" required>
+            <option value="diario">Diario</option>
+            <option value="semanal">Semanal</option>
+            <option value="mensual">Mensual</option>
+        </select><br><br>
+
+        <button type="submit">Guardar</button>
+    </form>
+</body>
+</html>

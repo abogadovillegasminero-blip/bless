@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Bless</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f4f6f9;
+        }
+        header {
+            background: #1f2937;
+            color: white;
+            padding: 15px 25px;
+            font-size: 20px;
+            font-weight: bold;
+        }
+        nav {
+            background: #111827;
+            width: 220px;
+            height: 100vh;
+            position: fixed;
+            top: 60px;
+            left: 0;
+        }
+        nav a {
+            display: block;
+            color: #d1d5db;
+            padding: 15px 20px;
+            text-decoration: none;
+            border-bottom: 1px solid #1f2937;
+        }
+        nav a:hover {
+            background: #2563eb;
+            color: white;
+        }
+        main {
+            margin-left: 220px;
+            padding: 30px;
+        }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,.1);
+            margin-bottom: 20px;
+        }
+        .btn {
+            background: #2563eb;
+            color: white;
+            padding: 10px 18px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover {
+            background: #1d4ed8;
+        }
+    </style>
+</head>
+<body>
+
+<header>Bless — Sistema de Cobros</header>
+
+<nav>
+    <a href="/graficos/resumen">📊 Gráficos</a>
+    <a href="/clientes">👥 Clientes</a>
+    <a href="/pagos">💰 Pagos</a>
+    <a href="/saldos">📄 Saldos</a>
+    <a href="/logout">🚪 Salir</a>
+</nav>
+
+<main>
+    {% block body %}{% endblock %}
+</main>
+
+</body>
+</html>

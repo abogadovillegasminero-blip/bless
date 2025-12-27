@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Reporte Bless</title>
+    <style>
+        body {
+            font-family: Arial;
+            margin: 40px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 60%;
+        }
+        th, td {
+            border: 1px solid #333;
+            padding: 8px;
+            text-align: right;
+        }
+        th {
+            background: #eee;
+        }
+    </style>
+</head>
+<body>
+
+<h1>📊 Reporte General</h1>
+
+<table>
+    <tr>
+        <th>Concepto</th>
+        <th>Valor</th>
+    </tr>
+    <tr>
+        <td>Total prestado</td>
+        <td>{{ total_prestado }}</td>
+    </tr>
+    <tr>
+        <td>Total pagado</td>
+        <td>{{ total_pagado }}</td>
+    </tr>
+    <tr>
+        <td>Saldo pendiente</td>
+        <td>{{ saldo_pendiente }}</td>
+    </tr>
+</table>
+
+</body>
+</html>

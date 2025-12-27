@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+    <h2>👥 Clientes</h2>
+
+    <form method="post" action="/clientes" class="grid">
+        <input name="nombre" placeholder="Nombre" required>
+        <input name="documento" placeholder="Documento" required>
+        <input name="telefono" placeholder="Teléfono" required>
+
+        <select name="tipo_cobro" required>
+            <option value="">Tipo de cobro</option>
+            <option value="Diario">Diario</option>
+            <option value="Semanal">Semanal</option>
+            <option value="Quincenal">Quincenal</option>
+            <option value="Mensual">Mensual</option>
+        </select>
+
+        <button type="submit">➕ Guardar Cliente</button>
+    </form>
+</div>
+
+<div class="card">
+    <h3>📋 Lista de clientes</h3>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Documento</th>
+                <th>Teléfono</th>
+                <th>Cobro</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in clientes %}
+            <tr>
+                <td>{{ c.nombre }}</td>
+                <td>{{ c.documento }}</td>
+                <td>{{ c.telefono }}</td>
+                <td>{{ c.tipo_cobro }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}
