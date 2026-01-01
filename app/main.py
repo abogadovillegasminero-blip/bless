@@ -11,6 +11,7 @@ from app.reportes import router as reportes_router
 from app.dashboard import router as dashboard_router
 
 app = FastAPI()
+templates = Jinja2Templates(directory="templates")
 
 # Static
 app.mount("/static", StaticFiles(directory="static"), name="static")
