@@ -1,48 +1,22 @@
 <!DOCTYPE html>
-<html lang="es">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Login Bless</title>
-    <style>
-        body {
-            background: #1f2937;
-            font-family: Arial;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-        }
-        .login {
-            background: white;
-            padding: 30px;
-            border-radius: 8px;
-            width: 300px;
-            text-align: center;
-        }
-        input {
-            width: 100%;
-            padding: 10px;
-            margin-bottom: 15px;
-        }
-        button {
-            width: 100%;
-            padding: 10px;
-            background: #2563eb;
-            color: white;
-            border: none;
-            border-radius: 5px;
-        }
-    </style>
+    <title>Login</title>
 </head>
 <body>
+    <h2>Iniciar sesión</h2>
 
-<div class="login">
-    <h2>Bless</h2>
-    <form method="post">
-        <input name="user" placeholder="Usuario" required>
-        <button>Entrar</button>
+    <form method="post" action="/login">
+        <label>Usuario</label><br>
+        <input name="username" required>
+        <br><br>
+
+        <label>Contraseña</label><br>
+        <input type="password" name="password" required>
+        <br><br>
+
+        <button type="submit">Entrar</button>
     </form>
-</div>
 
 </body>
 </html>
