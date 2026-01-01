@@ -11,7 +11,12 @@ from app.reportes import router as reportes_router
 from app.dashboard import router as dashboard_router
 
 app = FastAPI()
+from fastapi.templating import Jinja2Templates
+
 templates = Jinja2Templates(directory="templates")
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
 
 # Static
 app.mount("/static", StaticFiles(directory="static"), name="static")
