@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-pandas
 jinja2
+pandas
+openpyxl
 python-multipart
-python-jose[cryptography]==3.3.0
