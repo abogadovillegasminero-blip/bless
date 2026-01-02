@@ -4,3 +4,5 @@ jinja2
 pandas
 openpyxl
 python-multipart
+python-jose[cryptography]
+passlib[bcrypt]
