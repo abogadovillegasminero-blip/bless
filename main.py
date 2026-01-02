@@ -1,18 +1,7 @@
-from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
-from fastapi import Request
-
-templates = Jinja2Templates(directory="templates")
-
-@app.get("/login", response_class=HTMLResponse)
-def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request})
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 from fastapi import FastAPI, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from app.auth import router as auth_router, get_current_user
 from app.clientes import router as clientes_router
@@ -21,18 +10,19 @@ from app.saldos import router as saldos_router
 from app.reportes import router as reportes_router
 
 app = FastAPI()
-from fastapi import Request
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 
+# Templates (HTML)
 templates = Jinja2Templates(directory="templates")
 
+# ✅ GET /login -> muestra el HTML
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
 
+# Static
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Routers (incluye POST /login que ya tienes funcionando)
 app.include_router(auth_router)
 app.include_router(clientes_router)
 app.include_router(pagos_router)
