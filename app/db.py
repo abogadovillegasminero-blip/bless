@@ -1,58 +1,48 @@
 import os
 import sqlite3
 
-try:
-    import psycopg2
-except ImportError:
-    psycopg2 = None
+DB_PATH = os.getenv("DB_PATH", "/tmp/bless.db")
 
-
-def get_db_url() -> str | None:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        return None
-
-    # Render a veces da postgres://, psycopg2 prefiere postgresql://
-    if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql://", 1)
-
-    return url
-
+def get_connection():
+    return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 def init_db():
-    db_url = get_db_url()
+    conn = get_connection()
+    cur = conn.cursor()
 
-    # ✅ Si hay Postgres configurado, crea tabla allá
-    if db_url:
-        if psycopg2 is None:
-            raise RuntimeError(
-                "psycopg2-binary no está instalado. Agrégalo a requirements.txt"
-            )
+    # Tabla de usuarios (incluye rol)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'user'
+    )
+    """)
 
-        conn = psycopg2.connect(db_url)
-        cur = conn.cursor()
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS usuarios (
-                id SERIAL PRIMARY KEY,
-                username TEXT UNIQUE NOT NULL,
-                password TEXT NOT NULL
-            );
-        """)
-        conn.commit()
-        cur.close()
-        conn.close()
+    conn.commit()
+    conn.close()
+
+def ensure_admin(username: str, password: str):
+    """
+    Crea el admin si no existe.
+    NOTA: guarda password tal cual (sin hash) para no romper tu login actual.
+    Luego, si quieres, migramos a hash con passlib sin dañar nada.
+    """
+    if not username or not password:
         return
 
-    # ✅ Fallback SQLite (no persistente en Render Free)
-    db_path = "/tmp/bless.db"
-    conn = sqlite3.connect(db_path, check_same_thread=False)
+    conn = get_connection()
     cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS usuarios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE,
-            password TEXT
+
+    cur.execute("SELECT id FROM usuarios WHERE username = ?", (username,))
+    row = cur.fetchone()
+
+    if row is None:
+        cur.execute(
+            "INSERT INTO usuarios (username, password, role) VALUES (?, ?, 'admin')",
+            (username, password)
         )
-    """)
-    conn.commit()
+        conn.commit()
+
     conn.close()
