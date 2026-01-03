@@ -1,3 +1,4 @@
+from app.db import init_db
 from fastapi import FastAPI, Request, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -10,7 +11,7 @@ from app.saldos import router as saldos_router
 from app.reportes import router as reportes_router
 
 app = FastAPI()
-
+init_db()
 # Templates
 templates = Jinja2Templates(directory="templates")
 
