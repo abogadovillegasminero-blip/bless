@@ -1,4 +1,3 @@
-from app.db import init_db
 from fastapi import FastAPI, Request, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -11,12 +10,7 @@ from app.saldos import router as saldos_router
 from app.reportes import router as reportes_router
 
 app = FastAPI()
-from app.db import init_db
 
-@app.on_event("startup")
-def startup_event():
-    init_db()
-init_db()
 # Templates
 templates = Jinja2Templates(directory="templates")
 
@@ -48,6 +42,7 @@ def home(request: Request, user=Depends(get_current_user)):
                 display: flex;
                 align-items: center;
                 justify-content: center;
+                margin: 0;
             }}
             .menu {{
                 background: white;
