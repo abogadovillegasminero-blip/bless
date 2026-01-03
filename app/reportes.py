@@ -22,7 +22,6 @@ def ver_reportes(request: Request):
     else:
         df = pd.read_excel(PAGOS)
 
-        # Compatibilidad: si por alguna razón vinieran columnas antiguas
         if "valor" in df.columns and "monto" not in df.columns:
             df = df.rename(columns={"valor": "monto"})
         if "cliente" in df.columns and "cedula" not in df.columns:
@@ -89,7 +88,6 @@ def exportar_excel(request: Request):
 
     df = pd.read_excel(PAGOS)
 
-    # Compatibilidad por si existen columnas antiguas
     if "valor" in df.columns and "monto" not in df.columns:
         df = df.rename(columns={"valor": "monto"})
     if "cliente" in df.columns and "cedula" not in df.columns:
