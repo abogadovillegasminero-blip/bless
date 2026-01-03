@@ -11,6 +11,9 @@ from app.reportes import router as reportes_router
 from app.dashboard import router as dashboard_router
 
 app = FastAPI()
+@app.on_event("startup")
+def _startup():
+    init_db()
 from fastapi.templating import Jinja2Templates
 
 templates = Jinja2Templates(directory="templates")
