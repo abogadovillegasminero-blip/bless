@@ -10,14 +10,11 @@ from app.security import verify_password, hash_password, looks_hashed
 
 router = APIRouter()
 
-SECRET_KEY = os.getenv("SECRET_KEY", "bless_secret_key")  # en Render ponlo como env var
+SECRET_KEY = os.getenv("SECRET_KEY", "bless_secret_key")
 ALGORITHM = "HS256"
 TOKEN_HOURS = 8
 
 
-# =========================
-# DB helpers
-# =========================
 def get_user_by_username(username: str):
     conn = get_connection()
     cur = conn.cursor()
@@ -55,13 +52,11 @@ def authenticate_user(username: str, plain_password: str):
 
     stored = user["password"]
 
-    # Caso 1: ya está hasheada
     if looks_hashed(stored):
         if verify_password(plain_password, stored):
             return {"id": user["id"], "username": user["username"], "role": user["role"]}
         return None
 
-    # Caso 2: legado en texto plano (compatibilidad)
     if plain_password == stored:
         new_hashed = hash_password(plain_password)
         upgrade_password_to_hash(user["id"], new_hashed)
@@ -70,9 +65,6 @@ def authenticate_user(username: str, plain_password: str):
     return None
 
 
-# =========================
-# LOGIN
-# =========================
 @router.post("/login")
 def login(
     request: Request,
@@ -94,8 +86,6 @@ def login(
     )
 
     response = RedirectResponse("/", status_code=302)
-
-    # Render va en https, local normalmente http:
     secure_flag = (request.url.scheme == "https")
 
     response.set_cookie(
@@ -110,9 +100,6 @@ def login(
     return response
 
 
-# =========================
-# SESIÓN ACTUAL (JWT + valida en BD)
-# =========================
 def get_current_user(request: Request):
     token = request.cookies.get("token")
     if not token:
@@ -128,7 +115,6 @@ def get_current_user(request: Request):
             resp.delete_cookie("token", path="/")
             return resp
 
-        # Validar que el usuario siga existiendo en BD
         db_user = get_user_by_username(username)
         if not db_user:
             resp = RedirectResponse("/login", status_code=302)
@@ -143,14 +129,7 @@ def get_current_user(request: Request):
         return resp
 
 
-# =========================
-# GUARDS PARA RUTAS HTML
-# =========================
 def require_user(request: Request):
-    """
-    Úsalo dentro de endpoints HTML.
-    Retorna dict user o RedirectResponse.
-    """
     user = get_current_user(request)
     if isinstance(user, RedirectResponse):
         return user
@@ -158,10 +137,6 @@ def require_user(request: Request):
 
 
 def require_admin(request: Request):
-    """
-    Úsalo dentro de endpoints HTML solo admin.
-    Retorna dict user o RedirectResponse.
-    """
     user = get_current_user(request)
     if isinstance(user, RedirectResponse):
         return user
@@ -172,9 +147,6 @@ def require_admin(request: Request):
     return user
 
 
-# =========================
-# LOGOUT
-# =========================
 @router.get("/logout")
 def logout():
     response = RedirectResponse("/login", status_code=302)
