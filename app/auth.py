@@ -1,8 +1,9 @@
 import os
+from datetime import datetime, timedelta
+
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import RedirectResponse
 from jose import jwt, JWTError
-from datetime import datetime, timedelta
 
 from app.db import get_connection
 from app.security import verify_password, hash_password, looks_hashed
@@ -26,33 +27,6 @@ def get_user_by_username(username: str):
     )
     row = cur.fetchone()
     conn.close()
-# =========================
-# GUARDS PARA RUTAS HTML
-# =========================
-def require_user(request: Request):
-    """
-    Úsalo dentro de endpoints HTML.
-    Retorna dict user o RedirectResponse.
-    """
-    user = get_current_user(request)
-    if isinstance(user, RedirectResponse):
-        return user
-    return user
-
-
-def require_admin(request: Request):
-    """
-    Úsalo dentro de endpoints HTML solo admin.
-    Retorna dict user o RedirectResponse.
-    """
-    user = get_current_user(request)
-    if isinstance(user, RedirectResponse):
-        return user
-
-    if user.get("role") != "admin":
-        return RedirectResponse("/", status_code=302)
-
-    return user
 
     if not row:
         return None
@@ -107,8 +81,6 @@ def login(
 ):
     user = authenticate_user(username, password)
     if not user:
-        # Puedes mostrar mensaje con querystring si quieres:
-        # return RedirectResponse("/login?error=1", status_code=302)
         return RedirectResponse("/login", status_code=302)
 
     token = jwt.encode(
@@ -127,18 +99,19 @@ def login(
     secure_flag = (request.url.scheme == "https")
 
     response.set_cookie(
-        "token",
-        token,
+        key="token",
+        value=token,
         httponly=True,
         samesite="lax",
         secure=secure_flag,
-        max_age=TOKEN_HOURS * 60 * 60
+        max_age=TOKEN_HOURS * 60 * 60,
+        path="/",
     )
     return response
 
 
 # =========================
-# DEPENDENCIA GLOBAL
+# SESIÓN ACTUAL (JWT + valida en BD)
 # =========================
 def get_current_user(request: Request):
     token = request.cookies.get("token")
@@ -152,22 +125,51 @@ def get_current_user(request: Request):
 
         if not username:
             resp = RedirectResponse("/login", status_code=302)
-            resp.delete_cookie("token")
+            resp.delete_cookie("token", path="/")
             return resp
 
         # Validar que el usuario siga existiendo en BD
         db_user = get_user_by_username(username)
         if not db_user:
             resp = RedirectResponse("/login", status_code=302)
-            resp.delete_cookie("token")
+            resp.delete_cookie("token", path="/")
             return resp
 
         return {"username": username, "role": role}
 
     except JWTError:
         resp = RedirectResponse("/login", status_code=302)
-        resp.delete_cookie("token")
+        resp.delete_cookie("token", path="/")
         return resp
+
+
+# =========================
+# GUARDS PARA RUTAS HTML
+# =========================
+def require_user(request: Request):
+    """
+    Úsalo dentro de endpoints HTML.
+    Retorna dict user o RedirectResponse.
+    """
+    user = get_current_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+    return user
+
+
+def require_admin(request: Request):
+    """
+    Úsalo dentro de endpoints HTML solo admin.
+    Retorna dict user o RedirectResponse.
+    """
+    user = get_current_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    if user.get("role") != "admin":
+        return RedirectResponse("/", status_code=302)
+
+    return user
 
 
 # =========================
@@ -176,5 +178,5 @@ def get_current_user(request: Request):
 @router.get("/logout")
 def logout():
     response = RedirectResponse("/login", status_code=302)
-    response.delete_cookie("token")
+    response.delete_cookie("token", path="/")
     return response
