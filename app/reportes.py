@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends
-from fastapi.responses import HTMLResponse, FileResponse
-from app.auth import get_current_user
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
+from app.auth import require_user
 import pandas as pd
 import os
 
@@ -10,20 +10,31 @@ BASE = "data"
 PAGOS = f"{BASE}/pagos.xlsx"
 EXPORT = f"{BASE}/reporte_pagos.xlsx"
 
+
 @router.get("/", response_class=HTMLResponse)
-def ver_reportes(user=Depends(get_current_user)):
+def ver_reportes(request: Request):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
     if not os.path.exists(PAGOS):
-        filas = "<tr><td colspan='4'>No hay pagos</td></tr>"
+        filas = "<tr><td colspan='3'>No hay pagos</td></tr>"
     else:
         df = pd.read_excel(PAGOS)
+
+        # Compatibilidad: si por alguna razón vinieran columnas antiguas
+        if "valor" in df.columns and "monto" not in df.columns:
+            df = df.rename(columns={"valor": "monto"})
+        if "cliente" in df.columns and "cedula" not in df.columns:
+            df = df.rename(columns={"cliente": "cedula"})
+
         filas = ""
         for _, r in df.iterrows():
             filas += f"""
             <tr>
-                <td>{r['cliente']}</td>
-                <td>{r['fecha']}</td>
-                <td>{r['valor']}</td>
-                <td>{r['tipo_cobro']}</td>
+                <td>{r.get('cedula','')}</td>
+                <td>{r.get('fecha','')}</td>
+                <td>{r.get('monto','')}</td>
             </tr>
             """
 
@@ -56,10 +67,9 @@ def ver_reportes(user=Depends(get_current_user)):
 
         <table>
             <tr>
-                <th>Cliente</th>
+                <th>Cédula</th>
                 <th>Fecha</th>
-                <th>Valor</th>
-                <th>Tipo</th>
+                <th>Monto</th>
             </tr>
             {filas}
         </table>
@@ -67,12 +77,24 @@ def ver_reportes(user=Depends(get_current_user)):
     </html>
     """
 
+
 @router.get("/exportar")
-def exportar_excel(user=Depends(get_current_user)):
+def exportar_excel(request: Request):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
     if not os.path.exists(PAGOS):
         return {"error": "No hay datos"}
 
     df = pd.read_excel(PAGOS)
+
+    # Compatibilidad por si existen columnas antiguas
+    if "valor" in df.columns and "monto" not in df.columns:
+        df = df.rename(columns={"valor": "monto"})
+    if "cliente" in df.columns and "cedula" not in df.columns:
+        df = df.rename(columns={"cliente": "cedula"})
+
     df.to_excel(EXPORT, index=False)
 
     return FileResponse(
