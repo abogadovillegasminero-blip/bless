@@ -40,7 +40,7 @@ def guardar_cliente(
     cedula: str = Form(...),
     telefono: str = Form(...),
     monto: float = Form(...),
-    tipo_cobro: str = Form(...),  # ⚠️ ESTE NAME ES OBLIGATORIO
+    tipo_cobro: str = Form(...),
 ):
     user = require_user(request)
     if isinstance(user, RedirectResponse):
@@ -61,5 +61,4 @@ def guardar_cliente(
         df = pd.DataFrame([nuevo])
 
     df.to_excel(ARCHIVO, index=False)
-
     return RedirectResponse("/clientes", status_code=303)
