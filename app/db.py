@@ -3,12 +3,22 @@ import sqlite3
 
 from app.security import hash_password
 
-DB_PATH = os.getenv("DB_PATH", "/tmp/bless.db")
+# Lee env, limpia espacios/quotes y asegura ruta válida
+_raw = os.getenv("DB_PATH", "/tmp/bless.db")
+DB_PATH = _raw.strip().strip('"').strip("'")
+
+# Si por error queda relativo (ej: tmp/bless.db), lo mandamos a /tmp
+if not os.path.isabs(DB_PATH):
+    DB_PATH = os.path.join("/tmp", DB_PATH.lstrip("./"))
+
+# Asegura que la carpeta exista
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 def get_connection():
     return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 def init_db():
+    print(f"[DB] Using DB_PATH={DB_PATH}")  # se verá en Render Logs
     conn = get_connection()
     cur = conn.cursor()
 
