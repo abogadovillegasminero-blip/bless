@@ -1,12 +1,11 @@
 import os
-
-from fastapi import FastAPI, Request, Depends
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
 from app.db import init_db, ensure_admin
-from app.auth import router as auth_router, get_current_user
+from app.auth import router as auth_router, require_user
 from app.clientes import router as clientes_router
 from app.pagos import router as pagos_router
 from app.saldos import router as saldos_router
@@ -14,33 +13,30 @@ from app.reportes import router as reportes_router
 
 app = FastAPI()
 
-# ✅ Inicializa BD y crea admin al arrancar
 @app.on_event("startup")
 def startup_event():
     init_db()
+    ensure_admin(
+        os.getenv("ADMIN_USER", "admin"),
+        os.getenv("ADMIN_PASS", "admin123")
+    )
 
-    admin_user = os.getenv("ADMIN_USER", "admin")
-    admin_pass = os.getenv("ADMIN_PASS", "admin123")
-    ensure_admin(admin_user, admin_pass)
-
-# Templates
 templates = Jinja2Templates(directory="templates")
-
-# Static
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Login page (HTML)
+
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
 
-# Home
+
 @app.get("/", response_class=HTMLResponse)
-def home(request: Request, user=Depends(get_current_user)):
+def home(request: Request):
+    user = require_user(request)
     if isinstance(user, RedirectResponse):
         return user
 
-    es_admin = user["role"] == "admin"
+    es_admin = user.get("role") == "admin"
 
     return f"""
     <html>
@@ -122,7 +118,6 @@ def home(request: Request, user=Depends(get_current_user)):
     </html>
     """
 
-# Routers
 app.include_router(auth_router)
 app.include_router(clientes_router)
 app.include_router(pagos_router)
