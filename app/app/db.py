@@ -1,51 +1,24 @@
-import os
 import sqlite3
+import os
 
-DB_PATH = os.environ.get("DB_PATH", "/var/data/bless.db")
+BASE_DIR = "/var/data"
+DB_PATH = os.path.join(BASE_DIR, "bless.db")
 
-def get_conn():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
+os.makedirs(BASE_DIR, exist_ok=True)
 
 def init_db():
-    conn = get_conn()
-    cur = conn.cursor()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
 
-    # CLIENTES
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS clientes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nombre TEXT NOT NULL,
-        cedula TEXT NOT NULL,
-        telefono TEXT NOT NULL,
-        monto REAL NOT NULL,
-        tipo_cobro TEXT NOT NULL,
-        created_at TEXT DEFAULT (datetime('now'))
-    )
-    """)
-
-    # PAGOS (por si ya lo quieres listo)
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS pagos (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        cliente_cedula TEXT NOT NULL,
-        fecha TEXT NOT NULL,
-        monto REAL NOT NULL,
-        nota TEXT,
-        created_at TEXT DEFAULT (datetime('now'))
-    )
-    """)
-
-    # SALDOS (opcional, si manejas saldo calculado/guardado)
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS saldos (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        cliente_cedula TEXT NOT NULL,
-        saldo REAL NOT NULL,
-        updated_at TEXT DEFAULT (datetime('now'))
-    )
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS clientes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT,
+            cedula TEXT,
+            telefono TEXT,
+            monto REAL,
+            tipo_cobro TEXT
+        )
     """)
 
     conn.commit()
