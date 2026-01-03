@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Request, Form, Depends
+import os
+import pandas as pd
+from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-import pandas as pd
-import os
 
-from app.auth import get_current_user
+from app.auth import require_user
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -14,8 +14,13 @@ ARCHIVO = f"{DATA_DIR}/clientes.xlsx"
 
 os.makedirs(DATA_DIR, exist_ok=True)
 
+
 @router.get("/clientes", response_class=HTMLResponse)
-def ver_clientes(request: Request, user=Depends(get_current_user)):
+def ver_clientes(request: Request):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
     if os.path.exists(ARCHIVO):
         df = pd.read_excel(ARCHIVO)
         clientes = df.to_dict(orient="records")
@@ -27,15 +32,20 @@ def ver_clientes(request: Request, user=Depends(get_current_user)):
         {"request": request, "clientes": clientes, "user": user}
     )
 
+
 @router.post("/clientes/guardar")
 def guardar_cliente(
+    request: Request,
     nombre: str = Form(...),
     cedula: str = Form(...),
     telefono: str = Form(...),
     monto: float = Form(...),
     tipo_cobro: str = Form(...),  # ⚠️ ESTE NAME ES OBLIGATORIO
-    user=Depends(get_current_user)
 ):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
     nuevo = {
         "nombre": nombre,
         "cedula": cedula,
