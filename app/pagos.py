@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Request, Form, Depends
+from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 import pandas as pd
 import os
 
-from app.auth import get_current_user
+from app.auth import require_user
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -15,10 +15,14 @@ PAGOS = f"{DATA_DIR}/pagos.xlsx"
 
 os.makedirs(DATA_DIR, exist_ok=True)
 
-@router.get("/pagos", response_class=HTMLResponse)
-def pagos_form(request: Request, user=Depends(get_current_user)):
-    clientes = []
 
+@router.get("/pagos", response_class=HTMLResponse)
+def pagos_form(request: Request):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    clientes = []
     if os.path.exists(CLIENTES):
         df = pd.read_excel(CLIENTES)
         clientes = df.to_dict(orient="records")
@@ -32,13 +36,18 @@ def pagos_form(request: Request, user=Depends(get_current_user)):
         }
     )
 
+
 @router.post("/pagos/guardar")
 def guardar_pago(
+    request: Request,
     cedula: str = Form(...),
     monto: float = Form(...),
     fecha: str = Form(...),
-    user=Depends(get_current_user)
 ):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
     nuevo = {
         "cedula": cedula,
         "monto": monto,
