@@ -1,24 +1,20 @@
 import sqlite3
-import os
 
-BASE_DIR = "/var/data"
-DB_PATH = os.path.join(BASE_DIR, "bless.db")
+DB_PATH = "/tmp/bless.db"
 
-os.makedirs(BASE_DIR, exist_ok=True)
+def get_connection():
+    return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    conn = get_connection()
+    cur = conn.cursor()
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS clientes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre TEXT,
-            cedula TEXT,
-            telefono TEXT,
-            monto REAL,
-            tipo_cobro TEXT
-        )
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE,
+        password TEXT
+    )
     """)
 
     conn.commit()
