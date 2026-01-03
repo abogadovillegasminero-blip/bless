@@ -12,7 +12,6 @@ def init_db():
     conn = get_connection()
     cur = conn.cursor()
 
-    # Tabla de usuarios (incluye rol)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS usuarios (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -26,11 +25,6 @@ def init_db():
     conn.close()
 
 def ensure_admin(username: str, password: str):
-    """
-    Crea el admin si no existe.
-    - Si lo crea por primera vez: guarda password HASHEADO (bcrypt).
-    - Si ya existe: no toca nada (si era texto plano, se migrará al primer login).
-    """
     if not username or not password:
         return
 
