@@ -29,11 +29,7 @@ def pagos_form(request: Request):
 
     return templates.TemplateResponse(
         "pagos.html",
-        {
-            "request": request,
-            "clientes": clientes,
-            "user": user
-        }
+        {"request": request, "clientes": clientes, "user": user}
     )
 
 
@@ -48,11 +44,7 @@ def guardar_pago(
     if isinstance(user, RedirectResponse):
         return user
 
-    nuevo = {
-        "cedula": cedula,
-        "monto": monto,
-        "fecha": fecha
-    }
+    nuevo = {"cedula": cedula, "monto": monto, "fecha": fecha}
 
     if os.path.exists(PAGOS):
         df = pd.read_excel(PAGOS)
@@ -61,5 +53,4 @@ def guardar_pago(
         df = pd.DataFrame([nuevo])
 
     df.to_excel(PAGOS, index=False)
-
     return RedirectResponse("/pagos", status_code=303)
