@@ -1,6 +1,8 @@
 import os
 import sqlite3
 
+from app.security import hash_password
+
 DB_PATH = os.getenv("DB_PATH", "/tmp/bless.db")
 
 def get_connection():
@@ -26,8 +28,8 @@ def init_db():
 def ensure_admin(username: str, password: str):
     """
     Crea el admin si no existe.
-    NOTA: guarda password tal cual (sin hash) para no romper tu login actual.
-    Luego, si quieres, migramos a hash con passlib sin dañar nada.
+    - Si lo crea por primera vez: guarda password HASHEADO (bcrypt).
+    - Si ya existe: no toca nada (si era texto plano, se migrará al primer login).
     """
     if not username or not password:
         return
@@ -39,9 +41,10 @@ def ensure_admin(username: str, password: str):
     row = cur.fetchone()
 
     if row is None:
+        hashed = hash_password(password)
         cur.execute(
             "INSERT INTO usuarios (username, password, role) VALUES (?, ?, 'admin')",
-            (username, password)
+            (username, hashed)
         )
         conn.commit()
 
