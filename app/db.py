@@ -1,48 +1,58 @@
 import os
+import sqlite3
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+try:
+    import psycopg2
+except ImportError:
+    psycopg2 = None
 
-# Si no hay DATABASE_URL, cae a SQLite temporal (solo para pruebas)
-USE_SQLITE = not DATABASE_URL
 
-if USE_SQLITE:
-    import sqlite3
+def get_db_url() -> str | None:
+    url = os.getenv("DATABASE_URL")
+    if not url:
+        return None
 
-    DB_PATH = "/tmp/bless.db"
+    # Render a veces da postgres://, psycopg2 prefiere postgresql://
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
 
-    def get_connection():
-        return sqlite3.connect(DB_PATH, check_same_thread=False)
+    return url
 
-    def init_db():
-        conn = get_connection()
+
+def init_db():
+    db_url = get_db_url()
+
+    # ✅ Si hay Postgres configurado, crea tabla allá
+    if db_url:
+        if psycopg2 is None:
+            raise RuntimeError(
+                "psycopg2-binary no está instalado. Agrégalo a requirements.txt"
+            )
+
+        conn = psycopg2.connect(db_url)
         cur = conn.cursor()
         cur.execute("""
+            CREATE TABLE IF NOT EXISTS usuarios (
+                id SERIAL PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL
+            );
+        """)
+        conn.commit()
+        cur.close()
+        conn.close()
+        return
+
+    # ✅ Fallback SQLite (no persistente en Render Free)
+    db_path = "/tmp/bless.db"
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    cur = conn.cursor()
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS usuarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE,
             password TEXT
         )
-        """)
-        conn.commit()
-        conn.close()
-
-else:
-    import psycopg2
-
-    def get_connection():
-        # psycopg2 usa DATABASE_URL tal cual la entrega Render
-        return psycopg2.connect(DATABASE_URL)
-
-    def init_db():
-        conn = get_connection()
-        cur = conn.cursor()
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS usuarios (
-            id SERIAL PRIMARY KEY,
-            username TEXT UNIQUE,
-            password TEXT
-        )
-        """)
-        conn.commit()
-        cur.close()
-        conn.close()
+    """)
+    conn.commit()
+    conn.close()
