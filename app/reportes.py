@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
-from app.auth import require_user
+from app.auth import require_admin
 import pandas as pd
 import os
 
@@ -13,7 +13,7 @@ EXPORT = f"{BASE}/reporte_pagos.xlsx"
 
 @router.get("/", response_class=HTMLResponse)
 def ver_reportes(request: Request):
-    user = require_user(request)
+    user = require_admin(request)
     if isinstance(user, RedirectResponse):
         return user
 
@@ -22,6 +22,7 @@ def ver_reportes(request: Request):
     else:
         df = pd.read_excel(PAGOS)
 
+        # Compatibilidad por si existen columnas antiguas
         if "valor" in df.columns and "monto" not in df.columns:
             df = df.rename(columns={"valor": "monto"})
         if "cliente" in df.columns and "cedula" not in df.columns:
@@ -79,7 +80,7 @@ def ver_reportes(request: Request):
 
 @router.get("/exportar")
 def exportar_excel(request: Request):
-    user = require_user(request)
+    user = require_admin(request)
     if isinstance(user, RedirectResponse):
         return user
 
@@ -88,6 +89,7 @@ def exportar_excel(request: Request):
 
     df = pd.read_excel(PAGOS)
 
+    # Compatibilidad por si existen columnas antiguas
     if "valor" in df.columns and "monto" not in df.columns:
         df = df.rename(columns={"valor": "monto"})
     if "cliente" in df.columns and "cedula" not in df.columns:
