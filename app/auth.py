@@ -26,6 +26,33 @@ def get_user_by_username(username: str):
     )
     row = cur.fetchone()
     conn.close()
+# =========================
+# GUARDS PARA RUTAS HTML
+# =========================
+def require_user(request: Request):
+    """
+    Úsalo dentro de endpoints HTML.
+    Retorna dict user o RedirectResponse.
+    """
+    user = get_current_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+    return user
+
+
+def require_admin(request: Request):
+    """
+    Úsalo dentro de endpoints HTML solo admin.
+    Retorna dict user o RedirectResponse.
+    """
+    user = get_current_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    if user.get("role") != "admin":
+        return RedirectResponse("/", status_code=302)
+
+    return user
 
     if not row:
         return None
