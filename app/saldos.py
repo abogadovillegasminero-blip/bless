@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends
-from fastapi.responses import HTMLResponse
-from app.auth import get_current_user
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from app.auth import require_user
 import pandas as pd
 import os
 
@@ -10,7 +10,11 @@ CLIENTES_XLSX = "data/clientes.xlsx"
 PAGOS_XLSX = "data/pagos.xlsx"
 
 @router.get("/", response_class=HTMLResponse)
-def ver_saldos(user=Depends(get_current_user)):
+def ver_saldos(request: Request):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
     if not os.path.exists(CLIENTES_XLSX):
         return "<h3>No hay clientes registrados</h3>"
 
@@ -19,24 +23,37 @@ def ver_saldos(user=Depends(get_current_user)):
     if os.path.exists(PAGOS_XLSX):
         pagos = pd.read_excel(PAGOS_XLSX)
     else:
-        pagos = pd.DataFrame(columns=["cedula", "valor"])
+        pagos = pd.DataFrame(columns=["cedula", "monto"])
 
-    pagos_sum = pagos.groupby("cedula", as_index=False)["valor"].sum()
-    pagos_sum.rename(columns={"valor": "pagado"}, inplace=True)
+    # Asegurar columnas esperadas
+    if "monto" not in pagos.columns:
+        pagos["monto"] = 0
+
+    pagos_sum = pagos.groupby("cedula", as_index=False)["monto"].sum()
+    pagos_sum.rename(columns={"monto": "pagado"}, inplace=True)
+
+    # Compatibilidad por si en clientes el campo se llama distinto
+    # En tu saldos original usabas "prestamo". Si tu excel es "monto", lo mapeamos.
+    if "prestamo" not in clientes.columns and "monto" in clientes.columns:
+        clientes = clientes.rename(columns={"monto": "prestamo"})
 
     df = clientes.merge(pagos_sum, on="cedula", how="left")
     df["pagado"] = df["pagado"].fillna(0)
+
+    if "prestamo" not in df.columns:
+        return "<h3>Error: en clientes.xlsx falta la columna 'prestamo' (o 'monto')</h3>"
+
     df["saldo"] = df["prestamo"] - df["pagado"]
 
     filas = ""
     for _, r in df.iterrows():
         filas += f"""
         <tr>
-            <td>{r['cedula']}</td>
-            <td>{r['nombre']}</td>
-            <td>${r['prestamo']:,.0f}</td>
-            <td>${r['pagado']:,.0f}</td>
-            <td><b>${r['saldo']:,.0f}</b></td>
+            <td>{r.get('cedula','')}</td>
+            <td>{r.get('nombre','')}</td>
+            <td>${float(r.get('prestamo',0)):,.0f}</td>
+            <td>${float(r.get('pagado',0)):,.0f}</td>
+            <td><b>${float(r.get('saldo',0)):,.0f}</b></td>
         </tr>
         """
 
