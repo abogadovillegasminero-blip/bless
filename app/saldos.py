@@ -9,6 +9,7 @@ router = APIRouter(prefix="/saldos", tags=["Saldos"])
 CLIENTES_XLSX = "data/clientes.xlsx"
 PAGOS_XLSX = "data/pagos.xlsx"
 
+
 @router.get("/", response_class=HTMLResponse)
 def ver_saldos(request: Request):
     user = require_user(request)
@@ -25,15 +26,12 @@ def ver_saldos(request: Request):
     else:
         pagos = pd.DataFrame(columns=["cedula", "monto"])
 
-    # Asegurar columnas esperadas
     if "monto" not in pagos.columns:
         pagos["monto"] = 0
 
     pagos_sum = pagos.groupby("cedula", as_index=False)["monto"].sum()
     pagos_sum.rename(columns={"monto": "pagado"}, inplace=True)
 
-    # Compatibilidad por si en clientes el campo se llama distinto
-    # En tu saldos original usabas "prestamo". Si tu excel es "monto", lo mapeamos.
     if "prestamo" not in clientes.columns and "monto" in clientes.columns:
         clientes = clientes.rename(columns={"monto": "prestamo"})
 
