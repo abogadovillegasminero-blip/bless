@@ -1,1 +1,6 @@
+from app.db import init_db
+
+@app.on_event("startup")
+def startup_event():
+    init_db()
 templates = Jinja2Templates(directory="app/templates")
