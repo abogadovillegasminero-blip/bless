@@ -11,6 +11,11 @@ from app.saldos import router as saldos_router
 from app.reportes import router as reportes_router
 
 app = FastAPI()
+from app.db import init_db
+
+@app.on_event("startup")
+def startup_event():
+    init_db()
 init_db()
 # Templates
 templates = Jinja2Templates(directory="templates")
