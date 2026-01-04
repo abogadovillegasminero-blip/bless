@@ -24,7 +24,10 @@
 
 {% if resumen_cliente %}
 <div class="card p-3 mb-3">
-  <h5 class="mb-2">🔎 Resultado</h5>
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h5 class="m-0">🔎 Resultado</h5>
+    <a class="btn btn-success btn-sm" href="/pagos?cedula={{ resumen_cliente.cedula }}">➕ Registrar pago a este cliente</a>
+  </div>
 
   <div class="row g-3">
     <div class="col-md-3">
