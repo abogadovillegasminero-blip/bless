@@ -9,7 +9,10 @@
     <select name="cedula" class="form-control" required>
       <option value="">Seleccione cliente</option>
       {% for c in clientes %}
-        <option value="{{ c['cedula'] }}">{{ c['nombre'] }} - {{ c['cedula'] }}</option>
+        <option value="{{ c['cedula'] }}"
+          {% if pre_cedula and (c['cedula']|string == pre_cedula|string) %}selected{% endif %}>
+          {{ c['nombre'] }} - {{ c['cedula'] }}
+        </option>
       {% endfor %}
     </select>
   </div>
