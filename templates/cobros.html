@@ -38,7 +38,7 @@
         <th>Pagado semana</th>
         <th>Debe (hoy/semana)</th>
         <th>Saldo total</th>
-        <th style="width:380px;">Acciones</th>
+        <th style="width:420px;">Acciones</th>
       </tr>
     </thead>
     <tbody>
@@ -85,43 +85,48 @@
         <td>
           {% if r["saldo"]|float > 0 %}
 
-            <!-- ✅ PAGO RÁPIDO (solo si NO está omitido hoy) -->
             {% if not r["omitido_hoy"] %}
-            <form method="post" action="/cobros/pago_rapido" class="d-flex gap-2 mb-2 pago-rapido-form"
-                  onsubmit="return confirm('¿Registrar este pago rápido con fecha de HOY?');">
-              <input type="hidden" name="cedula" value="{{ r['cedula'] }}">
+              <!-- ✅ PAGO RÁPIDO -->
+              <form method="post" action="/cobros/pago_rapido" class="d-flex gap-2 mb-2 pago-rapido-form"
+                    onsubmit="return confirm('¿Registrar este pago rápido con fecha de HOY?');">
+                <input type="hidden" name="cedula" value="{{ r['cedula'] }}">
 
-              <input
-                type="number"
-                name="valor"
-                class="form-control form-control-sm pago-rapido-input"
-                required
-                min="0"
-                step="0.01"
-                max="{{ r['saldo']|float }}"
-                value="{{ r['valor_sugerido']|float }}"
-                style="width:150px;"
-                onfocus="this.select()"
-                title="No puede ser mayor al saldo"
-                {% if (not ns.focus_set) and r["alerta"] %}
-                  autofocus
-                  data-autofocus="1"
-                  {% set ns.focus_set = true %}
-                {% endif %}
-              >
+                <input
+                  type="number"
+                  name="valor"
+                  class="form-control form-control-sm pago-rapido-input"
+                  required
+                  min="0"
+                  step="0.01"
+                  max="{{ r['saldo']|float }}"
+                  value="{{ r['valor_sugerido']|float }}"
+                  style="width:150px;"
+                  onfocus="this.select()"
+                  title="No puede ser mayor al saldo"
+                  {% if (not ns.focus_set) and r["alerta"] %}
+                    autofocus
+                    data-autofocus="1"
+                    {% set ns.focus_set = true %}
+                  {% endif %}
+                >
 
-              <button class="btn btn-success btn-sm" style="min-width:160px;">Pago rápido (hoy)</button>
-            </form>
+                <button class="btn btn-success btn-sm" style="min-width:160px;">Pago rápido (hoy)</button>
+              </form>
+
+              <!-- ✅ NO COBRAR HOY -->
+              <form method="post" action="/cobros/no_cobrar_hoy" class="mb-2"
+                    onsubmit="return confirm('¿Marcar este cliente como NO COBRAR HOY?');">
+                <input type="hidden" name="cedula" value="{{ r['cedula'] }}">
+                <button class="btn btn-outline-secondary btn-sm w-100">💤 No cobrar hoy</button>
+              </form>
+            {% else %}
+              <!-- ✅ DESHACER -->
+              <form method="post" action="/cobros/deshacer_no_cobrar_hoy" class="mb-2"
+                    onsubmit="return confirm('¿Deshacer NO COBRAR HOY para este cliente?');">
+                <input type="hidden" name="cedula" value="{{ r['cedula'] }}">
+                <button class="btn btn-warning btn-sm w-100">↩️ Deshacer (cobrar hoy)</button>
+              </form>
             {% endif %}
-
-            <!-- ✅ NO COBRAR HOY -->
-            <form method="post" action="/cobros/no_cobrar_hoy" class="mb-2"
-                  onsubmit="return confirm('¿Marcar este cliente como NO COBRAR HOY?');">
-              <input type="hidden" name="cedula" value="{{ r['cedula'] }}">
-              <button class="btn btn-outline-secondary btn-sm w-100" {% if r["omitido_hoy"] %}disabled{% endif %}>
-                💤 No cobrar hoy
-              </button>
-            </form>
 
           {% endif %}
 
