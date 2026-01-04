@@ -22,16 +22,23 @@ def _load_clientes():
     if not os.path.exists(CLIENTES):
         return pd.DataFrame(columns=["nombre", "cedula", "telefono", "monto", "tipo_cobro"])
     df = pd.read_excel(CLIENTES)
+
     for col in ["nombre", "cedula", "telefono", "monto", "tipo_cobro"]:
         if col not in df.columns:
             df[col] = ""
+
     df["cedula"] = df["cedula"].astype(str)
+    df["nombre"] = df["nombre"].astype(str).replace(["nan", "NaT", "None"], "")
+    df["tipo_cobro"] = df["tipo_cobro"].astype(str).replace(["nan", "NaT", "None"], "").str.lower().str.strip()
+    df["monto"] = pd.to_numeric(df["monto"], errors="coerce").fillna(0)
+
     return df
 
 
 def _load_pagos():
     if not os.path.exists(PAGOS):
         return pd.DataFrame(columns=["cedula", "cliente", "fecha", "hora", "valor", "tipo_cobro", "registrado_por"])
+
     df = pd.read_excel(PAGOS)
 
     # compatibilidad si antes guardaste como "monto"
@@ -43,6 +50,17 @@ def _load_pagos():
             df[col] = ""
 
     df["cedula"] = df["cedula"].astype(str)
+    df["cliente"] = df["cliente"].astype(str).replace(["nan", "NaT", "None"], "")
+    df["fecha"] = df["fecha"].astype(str).replace(["nan", "NaT", "None"], "")
+    df["hora"] = df["hora"].astype(str).replace(["nan", "NaT", "None"], "")
+    df["tipo_cobro"] = df["tipo_cobro"].astype(str).replace(["nan", "NaT", "None"], "").str.lower().str.strip()
+    df["registrado_por"] = df["registrado_por"].astype(str).replace(["nan", "NaT", "None"], "")
+    df["valor"] = pd.to_numeric(df["valor"], errors="coerce").fillna(0)
+
+    # orden: últimos primero (fecha + hora)
+    df["_dt"] = pd.to_datetime(df["fecha"] + " " + df["hora"], errors="coerce")
+    df = df.sort_values(by="_dt", ascending=False).drop(columns=["_dt"])
+
     return df
 
 
@@ -75,7 +93,7 @@ def guardar_pago(
     if isinstance(user, RedirectResponse):
         return user
 
-    cedula = str(cedula)
+    cedula = str(cedula).strip()
 
     clientes_df = _load_clientes()
     match = clientes_df[clientes_df["cedula"].astype(str) == cedula]
