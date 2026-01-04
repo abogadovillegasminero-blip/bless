@@ -23,13 +23,16 @@ def startup_event():
     )
 
 templates = Jinja2Templates(directory="templates")
-
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request})
+    error = request.query_params.get("error")
+    return templates.TemplateResponse(
+        "login.html",
+        {"request": request, "error": error}
+    )
 
 
 @app.get("/", response_class=HTMLResponse)
