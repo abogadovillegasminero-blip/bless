@@ -60,7 +60,7 @@ def ver_reportes(request: Request):
         </style>
     </head>
     <body>
-        <h2>📈 Reporte de Pagos</h2>
+        <h2>📈 Reporte de Pagos (Solo Admin)</h2>
 
         <a href="/reportes/exportar">📤 Exportar a Excel</a>
         <a href="/">⬅ Volver</a>
