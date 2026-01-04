@@ -72,10 +72,9 @@
         <td>$ {{ "{:,.0f}".format(r["saldo"]|float).replace(",", ".") }}</td>
 
         <td>
-          <!-- ✅ PAGO RÁPIDO (valor por defecto = DEBE hoy/semana) -->
           {% if r["saldo"]|float > 0 %}
           <form method="post" action="/cobros/pago_rapido" class="d-flex gap-2 mb-2"
-                onsubmit="return confirm('¿Registrar este pago rápido?');">
+                onsubmit="return confirm('¿Registrar este pago rápido con fecha de HOY?');">
             <input type="hidden" name="cedula" value="{{ r['cedula'] }}">
 
             <input
@@ -86,20 +85,11 @@
               min="0"
               step="0.01"
               value="{{ r['debe']|float }}"
-              style="width:110px;"
+              style="width:130px;"
               onfocus="this.select()"
             >
 
-            <input
-              type="date"
-              name="fecha"
-              class="form-control form-control-sm"
-              value="{{ today }}"
-              required
-              style="width:150px;"
-            >
-
-            <button class="btn btn-success btn-sm" style="min-width:110px;">Pago rápido</button>
+            <button class="btn btn-success btn-sm" style="min-width:150px;">Pago rápido (hoy)</button>
           </form>
           {% endif %}
 
