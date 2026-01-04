@@ -41,7 +41,7 @@
       <th>Teléfono</th>
       <th>Monto</th>
       <th>Tipo cobro</th>
-      <th style="width:170px;">Acciones</th>
+      <th style="width:230px;">Acciones</th>
     </tr>
   </thead>
   <tbody>
@@ -57,9 +57,11 @@
       <td>$ {{ "{:,.0f}".format(c["monto"]|float).replace(",", ".") }}</td>
       <td>{{ c["tipo_cobro"] }}</td>
       <td>
+        <a class="btn btn-info btn-sm w-100 mb-1" href="/clientes/ver?cedula={{ c['cedula'] }}">Ver</a>
+
         <a class="btn btn-warning btn-sm w-100 mb-1" href="/clientes/editar?row_id={{ loop.index0 }}">Editar</a>
 
-        <form method="post" action="/clientes/eliminar" onsubmit="return confirm('¿Eliminar este cliente?');">
+        <form method="post" action="/clientes/eliminar" onsubmit="return confirm('¿Eliminar este cliente? Se borrarán también sus pagos.');">
           <input type="hidden" name="row_id" value="{{ loop.index0 }}">
           <button class="btn btn-danger btn-sm w-100">Eliminar</button>
         </form>
