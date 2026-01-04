@@ -27,6 +27,9 @@ def _load_clientes():
             df[col] = ""
 
     df["cedula"] = df["cedula"].astype(str)
+    df["nombre"] = df["nombre"].astype(str).replace(["nan", "NaT", "None"], "")
+    df["tipo_cobro"] = df["tipo_cobro"].astype(str).replace(["nan", "NaT", "None"], "")
+
     return df
 
 
@@ -36,7 +39,6 @@ def _load_pagos():
 
     df = pd.read_excel(PAGOS)
 
-    # Compatibilidad si antes guardaste como "monto"
     if "monto" in df.columns and "valor" not in df.columns:
         df.rename(columns={"monto": "valor"}, inplace=True)
 
@@ -45,12 +47,9 @@ def _load_pagos():
             df[col] = ""
 
     df["cedula"] = df["cedula"].astype(str)
-
-    # Limpieza para que no salga "nan" / "NaT"
-    df["fecha"] = df["fecha"].astype(str)
-    df["fecha"] = df["fecha"].replace(["nan", "NaT", "None"], "")
-
-    # Valor numérico seguro
+    df["cliente"] = df["cliente"].astype(str).replace(["nan", "NaT", "None"], "")
+    df["fecha"] = df["fecha"].astype(str).replace(["nan", "NaT", "None"], "")
+    df["tipo_cobro"] = df["tipo_cobro"].astype(str).replace(["nan", "NaT", "None"], "")
     df["valor"] = pd.to_numeric(df["valor"], errors="coerce").fillna(0)
 
     return df
@@ -62,12 +61,14 @@ def pagos_form(request: Request):
     if isinstance(user, RedirectResponse):
         return user
 
+    pre_cedula = (request.query_params.get("cedula") or "").strip()
+
     clientes_df = _load_clientes()
     clientes = clientes_df.to_dict(orient="records")
 
     pagos_df = _load_pagos()
 
-    # ✅ Ordenar por fecha (más recientes arriba) sin romper si hay fechas malas
+    # Ordenar por fecha (más recientes arriba) sin romper si hay fechas malas
     try:
         pagos_df["_fecha_dt"] = pd.to_datetime(pagos_df["fecha"], errors="coerce")
         pagos_df = pagos_df.sort_values(by="_fecha_dt", ascending=False)
@@ -79,7 +80,13 @@ def pagos_form(request: Request):
 
     return templates.TemplateResponse(
         "pagos.html",
-        {"request": request, "clientes": clientes, "pagos": pagos, "user": user}
+        {
+            "request": request,
+            "clientes": clientes,
+            "pagos": pagos,
+            "user": user,
+            "pre_cedula": pre_cedula,  # ✅ para preseleccionar
+        }
     )
 
 
@@ -116,7 +123,7 @@ def guardar_pago(
     pagos_df = pd.concat([pagos_df, pd.DataFrame([nuevo])], ignore_index=True)
     pagos_df.to_excel(PAGOS, index=False)
 
-    return RedirectResponse("/pagos", status_code=303)
+    return RedirectResponse(f"/pagos?cedula={cedula}", status_code=303)
 
 
 @router.post("/pagos/eliminar")
