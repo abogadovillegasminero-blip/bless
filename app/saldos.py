@@ -1,94 +1,84 @@
-from fastapi import APIRouter, Depends
-from fastapi.responses import HTMLResponse
-from app.auth import get_current_user
-import pandas as pd
 import os
+import pandas as pd
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
 
-router = APIRouter(prefix="/saldos", tags=["Saldos"])
+from app.auth import require_user
+
+router = APIRouter()
+templates = Jinja2Templates(directory="templates")
 
 CLIENTES_XLSX = "data/clientes.xlsx"
 PAGOS_XLSX = "data/pagos.xlsx"
 
 
-@router.get("/", response_class=HTMLResponse)
-def ver_saldos(user=Depends(get_current_user)):
+def _load_clientes():
     if not os.path.exists(CLIENTES_XLSX):
-        return "<h3>No hay clientes registrados</h3>"
+        return pd.DataFrame(columns=["nombre", "cedula", "telefono", "monto", "tipo_cobro"])
 
-    clientes = pd.read_excel(CLIENTES_XLSX)
+    df = pd.read_excel(CLIENTES_XLSX)
 
-    # Normaliza columnas de clientes (tu app usa "monto")
-    if "prestamo" in clientes.columns and "monto" not in clientes.columns:
-        clientes.rename(columns={"prestamo": "monto"}, inplace=True)
+    for col in ["nombre", "cedula", "telefono", "monto", "tipo_cobro"]:
+        if col not in df.columns:
+            df[col] = ""
 
-    for col in ["cedula", "nombre", "monto"]:
-        if col not in clientes.columns:
-            clientes[col] = ""
+    df["cedula"] = df["cedula"].astype(str)
+    df["monto"] = pd.to_numeric(df["monto"], errors="coerce").fillna(0)
 
-    clientes["cedula"] = clientes["cedula"].astype(str)
-    clientes["monto"] = pd.to_numeric(clientes["monto"], errors="coerce").fillna(0)
+    return df
 
-    if os.path.exists(PAGOS_XLSX):
-        pagos = pd.read_excel(PAGOS_XLSX)
-    else:
-        pagos = pd.DataFrame(columns=["cedula", "valor"])
 
-    # Compatibilidad por si guardaste pagos como "monto"
-    if "monto" in pagos.columns and "valor" not in pagos.columns:
-        pagos.rename(columns={"monto": "valor"}, inplace=True)
+def _load_pagos():
+    if not os.path.exists(PAGOS_XLSX):
+        return pd.DataFrame(columns=["cedula", "valor"])
+
+    df = pd.read_excel(PAGOS_XLSX)
+
+    # Compatibilidad si alguna vez guardaste como "monto"
+    if "monto" in df.columns and "valor" not in df.columns:
+        df.rename(columns={"monto": "valor"}, inplace=True)
 
     for col in ["cedula", "valor"]:
-        if col not in pagos.columns:
-            pagos[col] = 0
+        if col not in df.columns:
+            df[col] = ""
 
-    pagos["cedula"] = pagos["cedula"].astype(str)
-    pagos["valor"] = pd.to_numeric(pagos["valor"], errors="coerce").fillna(0)
+    df["cedula"] = df["cedula"].astype(str)
+    df["valor"] = pd.to_numeric(df["valor"], errors="coerce").fillna(0)
 
+    return df
+
+
+@router.get("/saldos", response_class=HTMLResponse)
+def ver_saldos(request: Request):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    clientes = _load_clientes()
+    pagos = _load_pagos()
+
+    if clientes.empty:
+        return templates.TemplateResponse(
+            "saldos.html",
+            {"request": request, "filas": [], "user": user}
+        )
+
+    # Sumar pagos por cédula
     pagos_sum = pagos.groupby("cedula", as_index=False)["valor"].sum()
     pagos_sum.rename(columns={"valor": "pagado"}, inplace=True)
 
+    # Merge clientes + pagos
     df = clientes.merge(pagos_sum, on="cedula", how="left")
     df["pagado"] = df["pagado"].fillna(0)
     df["saldo"] = df["monto"] - df["pagado"]
 
-    filas = ""
-    for _, r in df.iterrows():
-        filas += f"""
-        <tr>
-            <td>{r['cedula']}</td>
-            <td>{r['nombre']}</td>
-            <td>${float(r['monto']):,.0f}</td>
-            <td>${float(r['pagado']):,.0f}</td>
-            <td><b>${float(r['saldo']):,.0f}</b></td>
-        </tr>
-        """
+    # Ordenar por saldo (mayor primero)
+    df = df.sort_values(by="saldo", ascending=False)
 
-    return f"""
-    <html>
-    <head>
-        <title>Saldos</title>
-        <style>
-            body {{ font-family: Arial; background:#f5f6fa; }}
-            table {{ width:90%; margin:auto; border-collapse:collapse; background:white; }}
-            th, td {{ padding:10px; border-bottom:1px solid #ddd; text-align:center; }}
-            th {{ background:#222; color:white; }}
-            h2 {{ text-align:center; }}
-            a {{ display:inline-block; margin:14px 0 0 5%; }}
-        </style>
-    </head>
-    <body>
-        <a href="/">⬅ Volver</a>
-        <h2>📊 Saldos por Cliente</h2>
-        <table>
-            <tr>
-                <th>Cédula</th>
-                <th>Nombre</th>
-                <th>Préstamo</th>
-                <th>Pagado</th>
-                <th>Saldo</th>
-            </tr>
-            {filas}
-        </table>
-    </body>
-    </html>
-    """
+    filas = df.to_dict(orient="records")
+
+    return templates.TemplateResponse(
+        "saldos.html",
+        {"request": request, "filas": filas, "user": user}
+    )
