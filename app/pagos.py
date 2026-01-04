@@ -57,7 +57,7 @@ def _load_pagos():
     df["registrado_por"] = df["registrado_por"].astype(str).replace(["nan", "NaT", "None"], "")
     df["valor"] = pd.to_numeric(df["valor"], errors="coerce").fillna(0)
 
-    # orden: últimos primero (fecha + hora)
+    # ordenar: últimos primero (fecha + hora)
     df["_dt"] = pd.to_datetime(df["fecha"] + " " + df["hora"], errors="coerce")
     df = df.sort_values(by="_dt", ascending=False).drop(columns=["_dt"])
 
@@ -119,6 +119,28 @@ def guardar_pago(
 
     pagos_df = _load_pagos()
     pagos_df = pd.concat([pagos_df, pd.DataFrame([nuevo])], ignore_index=True)
+    pagos_df.to_excel(PAGOS, index=False)
+
+    return RedirectResponse("/pagos", status_code=303)
+
+
+@router.post("/pagos/eliminar")
+def eliminar_pago(
+    request: Request,
+    row_id: int = Form(...),
+):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    pagos_df = _load_pagos()
+
+    # seguridad: validar rango
+    if row_id < 0 or row_id >= len(pagos_df):
+        return RedirectResponse("/pagos", status_code=303)
+
+    # eliminar fila exacta
+    pagos_df = pagos_df.drop(index=row_id).reset_index(drop=True)
     pagos_df.to_excel(PAGOS, index=False)
 
     return RedirectResponse("/pagos", status_code=303)
