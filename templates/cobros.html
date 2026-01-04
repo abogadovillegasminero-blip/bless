@@ -37,7 +37,7 @@
         <th>Pagado semana</th>
         <th>Debe (hoy/semana)</th>
         <th>Saldo total</th>
-        <th style="width:180px;">Acciones</th>
+        <th style="width:320px;">Acciones</th>
       </tr>
     </thead>
     <tbody>
@@ -72,7 +72,18 @@
         <td>$ {{ "{:,.0f}".format(r["saldo"]|float).replace(",", ".") }}</td>
 
         <td>
-          <a class="btn btn-success btn-sm w-100 mb-1" href="/pagos?cedula={{ r['cedula'] }}">Registrar pago</a>
+          <!-- ✅ PAGO RÁPIDO -->
+          {% if r["saldo"]|float > 0 %}
+          <form method="post" action="/cobros/pago_rapido" class="d-flex gap-2 mb-2"
+                onsubmit="return confirm('¿Registrar este pago rápido?');">
+            <input type="hidden" name="cedula" value="{{ r['cedula'] }}">
+            <input type="number" name="valor" class="form-control form-control-sm" placeholder="Valor" required style="width:110px;">
+            <input type="date" name="fecha" class="form-control form-control-sm" value="{{ today }}" required style="width:150px;">
+            <button class="btn btn-success btn-sm" style="min-width:110px;">Pago rápido</button>
+          </form>
+          {% endif %}
+
+          <a class="btn btn-outline-success btn-sm w-100 mb-1" href="/pagos?cedula={{ r['cedula'] }}">Registrar pago</a>
           <a class="btn btn-info btn-sm w-100" href="/clientes/ver?cedula={{ r['cedula'] }}">Ver cliente</a>
         </td>
       </tr>
