@@ -50,7 +50,7 @@
       <td>{{ p["tipo_cobro"] }}</td>
       <td>
         <form method="post" action="/pagos/eliminar" onsubmit="return confirm('¿Eliminar este pago?');">
-          <input type="hidden" name="pago_id" value="{{ p['id'] }}">
+          <input type="hidden" name="row_id" value="{{ loop.index0 }}">
           <button class="btn btn-danger btn-sm w-100">Eliminar</button>
         </form>
       </td>
