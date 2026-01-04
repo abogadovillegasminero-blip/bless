@@ -10,11 +10,10 @@ from app.clientes import router as clientes_router
 from app.pagos import router as pagos_router
 from app.saldos import router as saldos_router
 from app.reportes import router as reportes_router
-from app.admin_users import router as admin_users_router
+from app.admin_users import router as admin_users_router  # ✅ NUEVO
 
 app = FastAPI()
 
-# ✅ Inicializa BD al arrancar + crea admin si no existe
 @app.on_event("startup")
 def startup_event():
     init_db()
@@ -130,4 +129,4 @@ app.include_router(clientes_router)
 app.include_router(pagos_router)
 app.include_router(saldos_router)
 app.include_router(reportes_router)
-app.include_router(admin_users_router)
+app.include_router(admin_users_router)  # ✅ NUEVO
