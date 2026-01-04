@@ -10,7 +10,7 @@ from app.security import hash_password
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
-# ✅ apunte robusto al folder app/templates (sin importar desde dónde arranque uvicorn)
+# ✅ apunte robusto al folder app/templates
 BASE_DIR = os.path.dirname(__file__)  # .../app
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))  # .../app/templates
 
@@ -18,10 +18,30 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))  # ..
 def list_users():
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT username, role FROM usuarios ORDER BY role DESC, username ASC")
+    cur.execute("SELECT id, username, role FROM usuarios ORDER BY role DESC, username ASC")
     rows = cur.fetchall()
     conn.close()
-    return [{"username": r[0], "role": r[1]} for r in rows]
+    return [{"id": r[0], "username": r[1], "role": r[2]} for r in rows]
+
+
+def count_admins():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM usuarios WHERE role = 'admin'")
+    n = cur.fetchone()[0]
+    conn.close()
+    return int(n)
+
+
+def get_user(username: str):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id, username, role FROM usuarios WHERE username = ?", (username,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {"id": row[0], "username": row[1], "role": row[2]}
 
 
 @router.get("/usuarios", response_class=HTMLResponse)
@@ -81,4 +101,76 @@ def crear_usuario(
         return RedirectResponse("/admin/usuarios?error=exists", status_code=303)
 
     conn.close()
-    return RedirectResponse("/admin/usuarios?ok=1", status_code=303)
+    return RedirectResponse("/admin/usuarios?ok=created", status_code=303)
+
+
+@router.post("/usuarios/cambiar_rol")
+def cambiar_rol(
+    request: Request,
+    username: str = Form(...),
+):
+    current_admin = require_admin(request)
+    if isinstance(current_admin, RedirectResponse):
+        return current_admin
+
+    username = (username or "").strip()
+    if not username:
+        return RedirectResponse("/admin/usuarios?error=missing", status_code=303)
+
+    # 🔒 no cambiar tu propio rol (evita perder panel)
+    if username == current_admin.get("username"):
+        return RedirectResponse("/admin/usuarios?error=self_role", status_code=303)
+
+    target = get_user(username)
+    if not target:
+        return RedirectResponse("/admin/usuarios?error=notfound", status_code=303)
+
+    current_role = target["role"]
+    new_role = "admin" if current_role == "user" else "user"
+
+    # 🔒 si estás intentando bajar a user y es el último admin, bloquea
+    if current_role == "admin" and new_role == "user":
+        if count_admins() <= 1:
+            return RedirectResponse("/admin/usuarios?error=last_admin", status_code=303)
+
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE usuarios SET role = ? WHERE username = ?", (new_role, username))
+    conn.commit()
+    conn.close()
+
+    return RedirectResponse("/admin/usuarios?ok=role", status_code=303)
+
+
+@router.post("/usuarios/eliminar")
+def eliminar_usuario(
+    request: Request,
+    username: str = Form(...),
+):
+    current_admin = require_admin(request)
+    if isinstance(current_admin, RedirectResponse):
+        return current_admin
+
+    username = (username or "").strip()
+    if not username:
+        return RedirectResponse("/admin/usuarios?error=missing", status_code=303)
+
+    # 🔒 no eliminarte tú mismo
+    if username == current_admin.get("username"):
+        return RedirectResponse("/admin/usuarios?error=self_delete", status_code=303)
+
+    target = get_user(username)
+    if not target:
+        return RedirectResponse("/admin/usuarios?error=notfound", status_code=303)
+
+    # 🔒 no eliminar el último admin
+    if target["role"] == "admin" and count_admins() <= 1:
+        return RedirectResponse("/admin/usuarios?error=last_admin", status_code=303)
+
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM usuarios WHERE username = ?", (username,))
+    conn.commit()
+    conn.close()
+
+    return RedirectResponse("/admin/usuarios?ok=deleted", status_code=303)
