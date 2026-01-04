@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Editar Cliente</h2>
+
+<div class="card p-3">
+  <form method="post" action="/clientes/actualizar">
+    <input type="hidden" name="row_id" value="{{ cliente.row_id }}">
+
+    <div class="mb-3">
+      <label class="form-label">Nombre</label>
+      <input name="nombre" class="form-control" required value="{{ cliente.nombre }}">
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Cédula</label>
+      <input name="cedula" class="form-control" required value="{{ cliente.cedula }}">
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Teléfono</label>
+      <input name="telefono" class="form-control" required value="{{ cliente.telefono }}">
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Monto</label>
+      <input type="number" name="monto" class="form-control" required value="{{ cliente.monto }}">
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Tipo de cobro</label>
+      <select name="tipo_cobro" class="form-control" required>
+        <option value="diario" {% if cliente.tipo_cobro == "diario" %}selected{% endif %}>Diario</option>
+        <option value="semanal" {% if cliente.tipo_cobro == "semanal" %}selected{% endif %}>Semanal</option>
+      </select>
+    </div>
+
+    <button class="btn btn-primary w-100">Guardar cambios</button>
+  </form>
+
+  <a class="btn btn-secondary w-100 mt-2" href="/clientes">Volver</a>
+</div>
+
+{% endblock %}
