@@ -3,65 +3,79 @@
 
 <h2>Registrar Pago</h2>
 
-<form method="post" action="/pagos/guardar" class="card p-3">
+<form method="post" action="/pagos/guardar" class="card p-3 mb-4">
   <div class="mb-3">
     <label class="form-label">Cliente</label>
     <select name="cedula" class="form-control" required>
       <option value="">Seleccione cliente</option>
       {% for c in clientes %}
-        <option value="{{ c['cedula'] }}"
-          {% if pre_cedula and (c['cedula']|string == pre_cedula|string) %}selected{% endif %}>
-          {{ c['nombre'] }} - {{ c['cedula'] }}
-        </option>
+        <option value="{{ c['cedula'] }}">{{ c['nombre'] }} - {{ c['cedula'] }}</option>
       {% endfor %}
     </select>
   </div>
 
-  <div class="mb-3">
-    <label class="form-label">Valor</label>
-    <input type="number" name="valor" class="form-control" required>
-  </div>
+  <div class="row">
+    <div class="col-md-4 mb-3">
+      <label class="form-label">Valor</label>
+      <input type="number" name="valor" class="form-control" required min="0" step="0.01">
+    </div>
 
-  <div class="mb-3">
-    <label class="form-label">Fecha</label>
-    <input type="date" name="fecha" class="form-control" required>
-  </div>
+    <div class="col-md-4 mb-3">
+      <label class="form-label">Fecha</label>
+      <input type="date" name="fecha" class="form-control" required>
+    </div>
 
-  <button class="btn btn-success w-100">Guardar Pago</button>
+    <div class="col-md-4 mb-3 d-flex align-items-end">
+      <button class="btn btn-success w-100">Guardar Pago</button>
+    </div>
+  </div>
 </form>
 
-<h3 class="mt-4">Últimos pagos</h3>
 
-<table class="table table-bordered bg-white">
-  <thead>
-    <tr>
-      <th>Cliente</th>
-      <th>Cédula</th>
-      <th>Fecha</th>
-      <th>Valor</th>
-      <th>Tipo cobro</th>
-      <th style="width:170px;">Acciones</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for p in pagos %}
-    <tr>
-      <td>{{ p["cliente"] }}</td>
-      <td>{{ p["cedula"] }}</td>
-      <td>{{ p["fecha"] }}</td>
-      <td>$ {{ "{:,.0f}".format(p["valor"]|float).replace(",", ".") }}</td>
-      <td>{{ p["tipo_cobro"] }}</td>
-      <td>
-        <a class="btn btn-warning btn-sm w-100 mb-1" href="/pagos/editar?row_id={{ loop.index0 }}">Editar</a>
+<h3 class="mt-2">📌 Últimos pagos</h3>
 
-        <form method="post" action="/pagos/eliminar" onsubmit="return confirm('¿Eliminar este pago?');">
-          <input type="hidden" name="row_id" value="{{ loop.index0 }}">
-          <button class="btn btn-danger btn-sm w-100">Eliminar</button>
-        </form>
-      </td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="card p-3">
+  <div class="table-responsive">
+    <table class="table table-bordered bg-white m-0">
+      <thead>
+        <tr>
+          <th>Cliente</th>
+          <th>Cédula</th>
+          <th>Fecha</th>
+          <th>Hora</th>
+          <th>Valor</th>
+          <th>Tipo cobro</th>
+          <th>Registrado por</th>
+          <th style="width:140px;">Acciones</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% if pagos|length == 0 %}
+          <tr><td colspan="8" class="text-center">No hay pagos registrados</td></tr>
+        {% endif %}
+
+        {% for p in pagos %}
+        <tr>
+          <td>{{ p["cliente"] }}</td>
+          <td>{{ p["cedula"] }}</td>
+          <td>{{ p["fecha"] }}</td>
+          <td>{{ p.get("hora", "") }}</td>
+          <td>$ {{ "{:,.0f}".format(p["valor"]|float).replace(",", ".") }}</td>
+          <td>{{ p["tipo_cobro"] }}</td>
+          <td>{{ p.get("registrado_por", "") }}</td>
+
+          <td>
+            <form method="post" action="/pagos/eliminar" onsubmit="return confirm('¿Eliminar este pago?');">
+              <input type="hidden" name="row_id" value="{{ loop.index0 }}">
+              <button class="btn btn-danger btn-sm w-100">Eliminar</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
 
 {% endblock %}
