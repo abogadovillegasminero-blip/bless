@@ -28,7 +28,6 @@ def admin_users_page(request: Request):
 
     error = request.query_params.get("error")
     ok = request.query_params.get("ok")
-
     usuarios = list_users()
 
     return templates.TemplateResponse(
