@@ -32,7 +32,29 @@
 </form>
 
 
-<h3 class="mt-2">📌 Últimos pagos</h3>
+<div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+  <h3 class="m-0">📌 Pagos</h3>
+
+  <a class="btn btn-outline-primary btn-sm ms-auto" href="/pagos">Todos</a>
+  <a class="btn btn-outline-success btn-sm" href="/pagos?hoy=1">Hoy ({{ hoy }})</a>
+
+  <form class="d-flex gap-2" method="get" action="/pagos">
+    <input class="form-control form-control-sm" name="cedula" placeholder="Filtrar por cédula"
+           value="{{ cedula_filtro }}" style="width:220px;">
+    <button class="btn btn-primary btn-sm">Buscar</button>
+  </form>
+</div>
+
+{% if solo_hoy %}
+  <div class="alert alert-info py-2">
+    Mostrando pagos de <b>hoy</b>: {{ hoy }}
+  </div>
+{% endif %}
+{% if cedula_filtro %}
+  <div class="alert alert-info py-2">
+    Filtrado por cédula: <b>{{ cedula_filtro }}</b>
+  </div>
+{% endif %}
 
 <div class="card p-3">
   <div class="table-responsive">
