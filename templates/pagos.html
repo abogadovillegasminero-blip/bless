@@ -46,7 +46,7 @@
       <td>{{ p["cliente"] }}</td>
       <td>{{ p["cedula"] }}</td>
       <td>{{ p["fecha"] }}</td>
-      <td>{{ p["valor"] }}</td>
+      <td>$ {{ "{:,.0f}".format(p["valor"]|float).replace(",", ".") }}</td>
       <td>{{ p["tipo_cobro"] }}</td>
       <td>
         <a class="btn btn-warning btn-sm w-100 mb-1" href="/pagos/editar?row_id={{ loop.index0 }}">Editar</a>
