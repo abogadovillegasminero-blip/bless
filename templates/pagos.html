@@ -68,7 +68,7 @@
           <th>Valor</th>
           <th>Tipo cobro</th>
           <th>Registrado por</th>
-          <th style="width:140px;">Acciones</th>
+          <th style="width:220px;">Acciones</th>
         </tr>
       </thead>
 
@@ -87,8 +87,11 @@
           <td>{{ p["tipo_cobro"] }}</td>
           <td>{{ p.get("registrado_por", "") }}</td>
 
-          <td>
-            <form method="post" action="/pagos/eliminar" onsubmit="return confirm('¿Eliminar este pago?');">
+          <td class="d-flex gap-2">
+            <a class="btn btn-warning btn-sm w-100" href="/pagos/editar/{{ loop.index0 }}">Editar</a>
+
+            <form method="post" action="/pagos/eliminar" class="w-100"
+                  onsubmit="return confirm('¿Eliminar este pago?');">
               <input type="hidden" name="row_id" value="{{ loop.index0 }}">
               <button class="btn btn-danger btn-sm w-100">Eliminar</button>
             </form>
