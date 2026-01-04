@@ -1,24 +1,37 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>Bless</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <meta charset="UTF-8">
+  <title>Proyecto Bless</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #f4f6f9; }
+    .card { border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+    .btn { border-radius: 10px; font-weight: 600; }
+    .navbar { box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+    table th { background: #0d6efd; color: white; }
+  </style>
 </head>
-<body class="bg-light">
 
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark px-3">
-    <a class="navbar-brand" href="/">BLESS</a>
-    <div class="navbar-nav">
-        <a class="nav-link" href="/graficos/resumen">Gráficos</a>
-        <a class="nav-link" href="/clientes">Clientes</a>
-        <a class="nav-link" href="/pagos">Pagos</a>
-        <a class="nav-link text-danger" href="/logout">Salir</a>
-    </div>
+<body>
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary px-4">
+  <a class="navbar-brand fw-bold" href="/dashboard">💼 Bless</a>
+
+  <div class="ms-3 d-flex gap-2">
+    <a href="/dashboard" class="btn btn-light btn-sm">Dashboard</a>
+    <a href="/clientes" class="btn btn-light btn-sm">Clientes</a>
+    <a href="/pagos" class="btn btn-light btn-sm">Pagos</a>
+    <a href="/cobros" class="btn btn-warning btn-sm">Cobros</a>
+  </div>
+
+  <div class="ms-auto">
+    <a href="/logout" class="btn btn-light btn-sm">Salir</a>
+  </div>
 </nav>
 
 <div class="container mt-4">
-    {% block content %}{% endblock %}
+  {% block content %}{% endblock %}
 </div>
 
 </body>
