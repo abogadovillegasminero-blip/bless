@@ -1,44 +1,51 @@
 {% extends "base.html" %}
 {% block content %}
 
-<h2>Editar Cliente</h2>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="m-0">✏️ Editar Cliente</h2>
+  <a class="btn btn-secondary btn-sm" href="/clientes">⬅ Volver</a>
+</div>
 
 <div class="card p-3">
-  <form method="post" action="/clientes/actualizar">
+  <form method="post" action="/clientes/actualizar" onsubmit="return confirm('¿Guardar cambios del cliente?');">
     <input type="hidden" name="row_id" value="{{ cliente.row_id }}">
 
-    <div class="mb-3">
-      <label class="form-label">Nombre</label>
-      <input name="nombre" class="form-control" required value="{{ cliente.nombre }}">
-    </div>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label">Nombre</label>
+        <input name="nombre" class="form-control" required value="{{ cliente.nombre }}">
+      </div>
 
-    <div class="mb-3">
-      <label class="form-label">Cédula</label>
-      <input name="cedula" class="form-control" required value="{{ cliente.cedula }}">
-    </div>
+      <div class="col-md-3">
+        <label class="form-label">Cédula</label>
+        <input name="cedula" class="form-control" required value="{{ cliente.cedula }}">
+        <div class="form-text">Si cambias la cédula, no puede duplicar otra existente.</div>
+      </div>
 
-    <div class="mb-3">
-      <label class="form-label">Teléfono</label>
-      <input name="telefono" class="form-control" required value="{{ cliente.telefono }}">
-    </div>
+      <div class="col-md-3">
+        <label class="form-label">Teléfono</label>
+        <input name="telefono" class="form-control" required value="{{ cliente.telefono }}">
+      </div>
 
-    <div class="mb-3">
-      <label class="form-label">Monto</label>
-      <input type="number" name="monto" class="form-control" required value="{{ cliente.monto }}">
-    </div>
+      <div class="col-md-2">
+        <label class="form-label">Monto</label>
+        <input name="monto" type="number" class="form-control" required min="0" step="0.01" value="{{ cliente.monto }}">
+      </div>
 
-    <div class="mb-3">
-      <label class="form-label">Tipo de cobro</label>
-      <select name="tipo_cobro" class="form-control" required>
-        <option value="diario" {% if cliente.tipo_cobro == "diario" %}selected{% endif %}>Diario</option>
-        <option value="semanal" {% if cliente.tipo_cobro == "semanal" %}selected{% endif %}>Semanal</option>
-      </select>
-    </div>
+      <div class="col-md-3">
+        <label class="form-label">Tipo de cobro</label>
+        <select name="tipo_cobro" class="form-control" required>
+          <option value="">Seleccione</option>
+          <option value="diario" {% if cliente.tipo_cobro == "diario" %}selected{% endif %}>Diario</option>
+          <option value="semanal" {% if cliente.tipo_cobro == "semanal" %}selected{% endif %}>Semanal</option>
+        </select>
+      </div>
 
-    <button class="btn btn-primary w-100">Guardar cambios</button>
+      <div class="col-md-3 d-flex align-items-end">
+        <button class="btn btn-primary w-100">Guardar cambios</button>
+      </div>
+    </div>
   </form>
-
-  <a class="btn btn-secondary w-100 mt-2" href="/clientes">Volver</a>
 </div>
 
 {% endblock %}
