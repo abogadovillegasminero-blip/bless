@@ -28,9 +28,9 @@ def _load_clientes():
     return df
 
 
-def _load_pagos():
+def _load_pagos_full():
     if not os.path.exists(PAGOS_XLSX):
-        return pd.DataFrame(columns=["cedula", "valor"])
+        return pd.DataFrame(columns=["cedula", "cliente", "fecha", "valor", "tipo_cobro"])
 
     df = pd.read_excel(PAGOS_XLSX)
 
@@ -38,11 +38,14 @@ def _load_pagos():
     if "monto" in df.columns and "valor" not in df.columns:
         df.rename(columns={"monto": "valor"}, inplace=True)
 
-    for col in ["cedula", "valor"]:
+    for col in ["cedula", "cliente", "fecha", "valor", "tipo_cobro"]:
         if col not in df.columns:
             df[col] = ""
 
     df["cedula"] = df["cedula"].astype(str)
+    df["cliente"] = df["cliente"].astype(str).replace(["nan", "NaT", "None"], "")
+    df["fecha"] = df["fecha"].astype(str).replace(["nan", "NaT", "None"], "")
+    df["tipo_cobro"] = df["tipo_cobro"].astype(str).replace(["nan", "NaT", "None"], "")
     df["valor"] = pd.to_numeric(df["valor"], errors="coerce").fillna(0)
     return df
 
@@ -54,12 +57,12 @@ def dashboard(request: Request):
         return user
 
     clientes = _load_clientes()
-    pagos = _load_pagos()
+    pagos = _load_pagos_full()
 
     total_clientes = int(len(clientes))
-
     total_prestado = float(clientes["monto"].sum()) if not clientes.empty else 0.0
 
+    # Sumar pagos por cédula
     pagos_sum = pagos.groupby("cedula", as_index=False)["valor"].sum()
     pagos_sum.rename(columns={"valor": "pagado"}, inplace=True)
 
@@ -74,7 +77,17 @@ def dashboard(request: Request):
     total_saldo = float(df["saldo"].sum()) if not df.empty else 0.0
 
     # Top 10 con más saldo
-    top = df.sort_values(by="saldo", ascending=False).head(10).to_dict(orient="records")
+    top_saldos = df.sort_values(by="saldo", ascending=False).head(10).to_dict(orient="records")
+
+    # Últimos 10 pagos (por fecha, si se puede; si no, deja el orden actual)
+    pagos_recent = pagos.copy()
+    try:
+        pagos_recent["_fecha_dt"] = pd.to_datetime(pagos_recent["fecha"], errors="coerce")
+        pagos_recent = pagos_recent.sort_values(by="_fecha_dt", ascending=False).drop(columns=["_fecha_dt"])
+    except Exception:
+        pass
+
+    ultimos_pagos = pagos_recent.head(10).to_dict(orient="records")
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -85,6 +98,7 @@ def dashboard(request: Request):
             "total_prestado": total_prestado,
             "total_pagado": total_pagado,
             "total_saldo": total_saldo,
-            "top": top,
+            "top_saldos": top_saldos,
+            "ultimos_pagos": ultimos_pagos,
         }
     )
