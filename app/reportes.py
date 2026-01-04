@@ -5,7 +5,7 @@ from datetime import datetime
 from io import BytesIO
 
 from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse, RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from openpyxl import Workbook
@@ -20,7 +20,13 @@ DB_PATH = os.getenv("DB_PATH", "/tmp/bless.db")
 
 
 def get_connection():
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
+    # timeout ayuda con locks en Render/SQLite
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL;")
+    except Exception:
+        pass
+    return conn
 
 
 def _fetch_table_as_columns_and_rows(conn: sqlite3.Connection, table_name: str):
@@ -37,7 +43,6 @@ def _fetch_table_as_columns_and_rows(conn: sqlite3.Connection, table_name: str):
     if not columns:
         return [], []
 
-    # Ordena por id si existe (no inventa nada, solo usa si está)
     order_clause = ""
     if "id" in columns:
         order_clause = ' ORDER BY "id" ASC'
@@ -61,7 +66,7 @@ def _autosize_worksheet(ws):
 
 
 @router.get("")
-def reportes_page(request: Request):
+def ver_reportes(request: Request):
     user = require_admin(request)
     if isinstance(user, RedirectResponse):
         return user
@@ -86,7 +91,7 @@ def exportar_todo(request: Request):
         wb = Workbook()
         wb.remove(wb.active)  # quita hoja por defecto
 
-        # Hoja CLIENTES
+        # CLIENTES
         ws_clientes = wb.create_sheet("CLIENTES")
         if clientes_cols:
             ws_clientes.append(clientes_cols)
@@ -99,7 +104,7 @@ def exportar_todo(request: Request):
             ws_clientes.append(["Sin datos (tabla clientes no encontrada o sin columnas)"])
             ws_clientes["A1"].font = Font(bold=True)
 
-        # Hoja PAGOS
+        # PAGOS
         ws_pagos = wb.create_sheet("PAGOS")
         if pagos_cols:
             ws_pagos.append(pagos_cols)
@@ -123,7 +128,6 @@ def exportar_todo(request: Request):
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
-
     finally:
         try:
             conn.close()
