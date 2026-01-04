@@ -1,102 +1,35 @@
+{# templates/reportes.html #}
 {% extends "base.html" %}
+
 {% block content %}
+<div class="container mt-4">
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h2 class="m-0">📈 Reportes (Admin)</h2>
-  <a class="btn btn-secondary btn-sm" href="/dashboard">⬅ Volver</a>
-</div>
-
-{% if error %}
-  <div class="alert alert-danger">❌ No hay datos para exportar.</div>
-{% endif %}
-
-<div class="card p-3 mb-3">
-  <form method="get" action="/reportes" class="row g-3">
-
-    <div class="col-md-2">
-      <label class="form-label">Hoy</label>
-      <select name="hoy" class="form-control">
-        <option value="" {% if hoy != "1" %}selected{% endif %}>No</option>
-        <option value="1" {% if hoy == "1" %}selected{% endif %}>Sí</option>
-      </select>
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h3 class="mb-0">Reportes</h3>
+      <small class="text-muted">Panel de administración</small>
     </div>
 
-    <div class="col-md-3">
-      <label class="form-label">Desde</label>
-      <input type="date" name="desde" class="form-control" value="{{ desde }}">
+    <div class="d-flex gap-2">
+      <a href="/dashboard" class="btn btn-outline-secondary">Volver</a>
+      <a href="/reportes/exportar-todo" class="btn btn-success">
+        Exportar TODO
+      </a>
     </div>
-
-    <div class="col-md-3">
-      <label class="form-label">Hasta</label>
-      <input type="date" name="hasta" class="form-control" value="{{ hasta }}">
-    </div>
-
-    <div class="col-md-2">
-      <label class="form-label">Cédula</label>
-      <input name="cedula" class="form-control" value="{{ cedula }}" placeholder="Filtrar">
-    </div>
-
-    <div class="col-md-2 d-flex align-items-end">
-      <button class="btn btn-primary w-100">Aplicar</button>
-    </div>
-  </form>
-
-  <div class="d-flex gap-2 flex-wrap mt-3">
-    <a class="btn btn-success"
-       href="/reportes/exportar?hoy={{ hoy }}&desde={{ desde }}&hasta={{ hasta }}&cedula={{ cedula }}">
-      📤 Exportar Pagos (filtro)
-    </a>
-
-    <a class="btn btn-dark"
-       onclick="return confirm('Esto exporta TODO (clientes + pagos). ¿Continuar?');"
-       href="/reportes/exportar_todo">
-      💾 Exportar TODO (Backup)
-    </a>
   </div>
 
-  <div class="mt-3">
-    <span class="badge bg-primary">Registros: {{ cantidad }}</span>
-    <span class="badge bg-success">Total: $ {{ "{:,.0f}".format(total|float).replace(",", ".") }}</span>
+  <div class="card">
+    <div class="card-body">
+      <p class="mb-2">
+        Descarga un archivo Excel (.xlsx) con dos hojas:
+        <strong>CLIENTES</strong> y <strong>PAGOS</strong>.
+      </p>
+      <ul class="mb-0">
+        <li>Incluye todas las columnas reales de la BD (sin inventar campos).</li>
+        <li>Incluye todos los registros existentes en SQLite.</li>
+      </ul>
+    </div>
   </div>
+
 </div>
-
-<div class="card p-3">
-  <h5 class="mb-3">Pagos</h5>
-
-  <div class="table-responsive">
-    <table class="table table-bordered bg-white m-0">
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>Cliente</th>
-          <th>Cédula</th>
-          <th>Fecha</th>
-          <th>Hora</th>
-          <th>Valor</th>
-          <th>Tipo</th>
-          <th>Registrado por</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% if pagos|length == 0 %}
-          <tr><td colspan="8" class="text-center">No hay pagos</td></tr>
-        {% endif %}
-
-        {% for p in pagos %}
-        <tr>
-          <td>{{ p.id }}</td>
-          <td>{{ p.cliente }}</td>
-          <td>{{ p.cedula }}</td>
-          <td>{{ p.fecha }}</td>
-          <td>{{ p.hora }}</td>
-          <td>$ {{ "{:,.0f}".format(p.valor|float).replace(",", ".") }}</td>
-          <td>{{ p.tipo_cobro }}</td>
-          <td>{{ p.registrado_por }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-
 {% endblock %}
