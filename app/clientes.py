@@ -11,6 +11,7 @@ templates = Jinja2Templates(directory="templates")
 
 DATA_DIR = "data"
 ARCHIVO = f"{DATA_DIR}/clientes.xlsx"
+PAGOS_XLSX = f"{DATA_DIR}/pagos.xlsx"   # ✅ para borrar pagos del cliente
 
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -37,6 +38,31 @@ def _load_clientes():
 
 def _save_clientes(df: pd.DataFrame):
     df.to_excel(ARCHIVO, index=False)
+
+
+def _delete_pagos_by_cedula(cedula: str):
+    """
+    ✅ Borra todos los pagos del cliente en data/pagos.xlsx.
+    Compatible si antes guardaste pagos con columna "monto".
+    """
+    if not os.path.exists(PAGOS_XLSX):
+        return
+
+    df = pd.read_excel(PAGOS_XLSX)
+
+    # Compatibilidad por si antes guardaste como "monto"
+    if "monto" in df.columns and "valor" not in df.columns:
+        df.rename(columns={"monto": "valor"}, inplace=True)
+
+    if "cedula" not in df.columns:
+        # Si no hay columna cédula no podemos filtrar -> no tocamos nada
+        return
+
+    df["cedula"] = df["cedula"].astype(str)
+    cedula = str(cedula)
+
+    df = df[df["cedula"] != cedula].reset_index(drop=True)
+    df.to_excel(PAGOS_XLSX, index=False)
 
 
 @router.get("/clientes", response_class=HTMLResponse)
@@ -167,7 +193,15 @@ def eliminar_cliente(
     if row_id < 0 or row_id >= len(df):
         return RedirectResponse("/clientes", status_code=303)
 
+    # ✅ Capturar la cédula ANTES de borrar el cliente
+    cedula = str(df.iloc[row_id].get("cedula", "")).strip()
+
+    # ✅ Borrar cliente
     df = df.drop(index=row_id).reset_index(drop=True)
     _save_clientes(df)
+
+    # ✅ Borrar pagos del cliente
+    if cedula:
+        _delete_pagos_by_cedula(cedula)
 
     return RedirectResponse("/clientes", status_code=303)
