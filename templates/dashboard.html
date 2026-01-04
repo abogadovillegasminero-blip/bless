@@ -1,74 +1,87 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h2 class="m-0">📊 Dashboard</h2>
-  <div class="text-muted">
-    Usuario: <b>{{ user.username }}</b>
-    {% if user.role == "admin" %}
-      <span class="badge bg-dark ms-2">ADMIN</span>
-    {% else %}
-      <span class="badge bg-secondary ms-2">USER</span>
-    {% endif %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h2 class="m-0">📊 Dashboard</h2>
+    <div class="text-muted">Sesión: <b>{{ user.username }}</b> (rol: <b>{{ user.role }}</b>)</div>
   </div>
+  <a href="/logout" class="btn btn-outline-danger">🔒 Cerrar sesión</a>
 </div>
 
 <div class="row g-3">
-  <div class="col-md-4">
-    <a class="text-decoration-none" href="/clientes">
-      <div class="card p-3">
-        <h5 class="m-0">👥 Clientes</h5>
-        <div class="text-muted">Registrar y ver clientes</div>
+  <div class="col-md-6">
+    <a href="/clientes" class="text-decoration-none">
+      <div class="card p-4">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <div class="text-muted">Gestión</div>
+            <div class="fs-4 fw-bold">👥 Clientes</div>
+          </div>
+          <span class="badge bg-primary fs-6">Abrir</span>
+        </div>
       </div>
     </a>
   </div>
 
-  <div class="col-md-4">
-    <a class="text-decoration-none" href="/pagos">
-      <div class="card p-3">
-        <h5 class="m-0">💵 Pagos</h5>
-        <div class="text-muted">Registrar / editar / eliminar pagos</div>
+  <div class="col-md-6">
+    <a href="/pagos" class="text-decoration-none">
+      <div class="card p-4">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <div class="text-muted">Operación</div>
+            <div class="fs-4 fw-bold">💵 Pagos</div>
+          </div>
+          <span class="badge bg-success fs-6">Abrir</span>
+        </div>
       </div>
     </a>
   </div>
 
-  <div class="col-md-4">
-    <a class="text-decoration-none" href="/cobros">
-      <div class="card p-3">
-        <h5 class="m-0">🧾 Cobros</h5>
-        <div class="text-muted">Plan diario/semanal + pago rápido</div>
-      </div>
-    </a>
-  </div>
-
-  <div class="col-md-4">
-    <a class="text-decoration-none" href="/saldos">
-      <div class="card p-3">
-        <h5 class="m-0">📌 Saldos</h5>
-        <div class="text-muted">Saldo por cliente</div>
+  <div class="col-md-6">
+    <a href="/saldos" class="text-decoration-none">
+      <div class="card p-4">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <div class="text-muted">Análisis</div>
+            <div class="fs-4 fw-bold">📌 Saldos</div>
+          </div>
+          <span class="badge bg-dark fs-6">Abrir</span>
+        </div>
       </div>
     </a>
   </div>
 
   {% if user.role == "admin" %}
-  <div class="col-md-4">
-    <a class="text-decoration-none" href="/reportes">
-      <div class="card p-3">
-        <h5 class="m-0">📈 Reportes</h5>
-        <div class="text-muted">Exportar a Excel</div>
+  <div class="col-md-6">
+    <a href="/reportes" class="text-decoration-none">
+      <div class="card p-4">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <div class="text-muted">Admin</div>
+            <div class="fs-4 fw-bold">📈 Reportes</div>
+          </div>
+          <span class="badge bg-info fs-6">Abrir</span>
+        </div>
       </div>
     </a>
   </div>
 
-  <div class="col-md-4">
-    <a class="text-decoration-none" href="/admin/usuarios">
-      <div class="card p-3">
-        <h5 class="m-0">👤 Usuarios</h5>
-        <div class="text-muted">Crear / eliminar / cambiar rol</div>
+  <div class="col-md-6">
+    <a href="/admin/usuarios" class="text-decoration-none">
+      <div class="card p-4">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <div class="text-muted">Admin</div>
+            <div class="fs-4 fw-bold">👤 Usuarios</div>
+          </div>
+          <span class="badge bg-warning text-dark fs-6">Abrir</span>
+        </div>
       </div>
     </a>
   </div>
   {% endif %}
+
 </div>
 
 {% endblock %}
