@@ -20,7 +20,7 @@ def get_user_by_username(username: str):
     cur = conn.cursor()
     cur.execute(
         "SELECT id, username, password, role FROM usuarios WHERE username = ?",
-        (username,)
+        (username,),
     )
     row = cur.fetchone()
     conn.close()
@@ -28,12 +28,11 @@ def get_user_by_username(username: str):
     if not row:
         return None
 
-    user_id, username, stored_password, role = row
     return {
-        "id": user_id,
-        "username": username,
-        "password": stored_password,
-        "role": role
+        "id": row["id"],
+        "username": row["username"],
+        "password": row["password"],
+        "role": row["role"],
     }
 
 
@@ -52,11 +51,13 @@ def authenticate_user(username: str, plain_password: str):
 
     stored = user["password"]
 
+    # Caso 1: ya está hasheada
     if looks_hashed(stored):
         if verify_password(plain_password, stored):
             return {"id": user["id"], "username": user["username"], "role": user["role"]}
         return None
 
+    # Caso 2: legado en texto plano (compatibilidad)
     if plain_password == stored:
         new_hashed = hash_password(plain_password)
         upgrade_password_to_hash(user["id"], new_hashed)
@@ -66,11 +67,7 @@ def authenticate_user(username: str, plain_password: str):
 
 
 @router.post("/login")
-def login(
-    request: Request,
-    username: str = Form(...),
-    password: str = Form(...)
-):
+def login(request: Request, username: str = Form(...), password: str = Form(...)):
     user = authenticate_user(username, password)
     if not user:
         return RedirectResponse("/login?error=1", status_code=302)
@@ -79,13 +76,13 @@ def login(
         {
             "sub": user["username"],
             "role": user["role"],
-            "exp": datetime.utcnow() + timedelta(hours=TOKEN_HOURS)
+            "exp": datetime.utcnow() + timedelta(hours=TOKEN_HOURS),
         },
         SECRET_KEY,
-        algorithm=ALGORITHM
+        algorithm=ALGORITHM,
     )
 
-    response = RedirectResponse("/", status_code=302)
+    response = RedirectResponse("/dashboard", status_code=302)
     secure_flag = (request.url.scheme == "https")
 
     response.set_cookie(
@@ -100,10 +97,16 @@ def login(
     return response
 
 
+def _redirect_login_clear_cookie():
+    resp = RedirectResponse("/login?error=1", status_code=302)
+    resp.delete_cookie("token", path="/")
+    return resp
+
+
 def get_current_user(request: Request):
     token = request.cookies.get("token")
     if not token:
-        return RedirectResponse("/login?error=1", status_code=302)
+        return _redirect_login_clear_cookie()
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -111,22 +114,16 @@ def get_current_user(request: Request):
         role = payload.get("role")
 
         if not username:
-            resp = RedirectResponse("/login?error=1", status_code=302)
-            resp.delete_cookie("token", path="/")
-            return resp
+            return _redirect_login_clear_cookie()
 
         db_user = get_user_by_username(username)
         if not db_user:
-            resp = RedirectResponse("/login?error=1", status_code=302)
-            resp.delete_cookie("token", path="/")
-            return resp
+            return _redirect_login_clear_cookie()
 
         return {"username": username, "role": role}
 
     except JWTError:
-        resp = RedirectResponse("/login?error=1", status_code=302)
-        resp.delete_cookie("token", path="/")
-        return resp
+        return _redirect_login_clear_cookie()
 
 
 def require_user(request: Request):
@@ -142,7 +139,7 @@ def require_admin(request: Request):
         return user
 
     if user.get("role") != "admin":
-        return RedirectResponse("/", status_code=302)
+        return RedirectResponse("/dashboard", status_code=302)
 
     return user
 
