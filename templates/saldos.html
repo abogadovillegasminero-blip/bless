@@ -34,34 +34,32 @@
         <tr>
           <th>Cliente</th>
           <th>Cédula</th>
-          <th>Tipo cobro</th>
+          <th>Teléfono</th>
           <th>Monto</th>
           <th>Pagado</th>
           <th>Saldo</th>
           <th>Último pago</th>
-          <th style="width:220px;">Acciones</th>
+          <th>Tipo</th>
+          <th style="width:140px;">Acción</th>
         </tr>
       </thead>
       <tbody>
         {% if filas|length == 0 %}
-          <tr><td colspan="8" class="text-center">No hay clientes registrados</td></tr>
+          <tr><td colspan="9" class="text-center">No hay clientes</td></tr>
         {% endif %}
 
         {% for r in filas %}
         <tr>
           <td>{{ r.nombre }}</td>
           <td>{{ r.cedula }}</td>
-          <td class="text-uppercase"><b>{{ r.tipo_cobro }}</b></td>
-
+          <td>{{ r.telefono }}</td>
           <td>$ {{ "{:,.0f}".format(r.monto|float).replace(",", ".") }}</td>
           <td>$ {{ "{:,.0f}".format(r.pagado_total|float).replace(",", ".") }}</td>
           <td><b>$ {{ "{:,.0f}".format(r.saldo|float).replace(",", ".") }}</b></td>
-
           <td>{{ r.ultimo_pago }}</td>
-
-          <td class="d-flex gap-2">
-            <a class="btn btn-success btn-sm w-100" href="/pagos?cedula={{ r.cedula }}">Pagos</a>
-            <a class="btn btn-info btn-sm w-100" href="/clientes/ver?cedula={{ r.cedula }}">Ver</a>
+          <td>{{ r.tipo_cobro }}</td>
+          <td>
+            <a class="btn btn-sm btn-primary w-100" href="/pagos?cedula={{ r.cedula }}">Ver pagos</a>
           </td>
         </tr>
         {% endfor %}
