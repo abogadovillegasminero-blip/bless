@@ -2,7 +2,7 @@ import os
 from datetime import date, timedelta
 
 import pandas as pd
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -77,9 +77,60 @@ def _load_pagos():
     return df
 
 
+def _save_pagos(df: pd.DataFrame):
+    # quitar columna auxiliar antes de guardar
+    if "_fecha_dt" in df.columns:
+        df = df.drop(columns=["_fecha_dt"])
+    df.to_excel(PAGOS_XLSX, index=False)
+
+
 def _start_of_week(d: date) -> date:
     # lunes como inicio de semana
     return d - timedelta(days=d.weekday())
+
+
+@router.post("/cobros/pago_rapido")
+def pago_rapido(
+    request: Request,
+    cedula: str = Form(...),
+    valor: float = Form(...),
+    fecha: str = Form(...),
+):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    cedula = str(cedula).strip()
+    fecha = str(fecha).strip()
+
+    # validar cliente existe
+    clientes = _load_clientes()
+    match = clientes[clientes["cedula"].astype(str) == cedula]
+    if match.empty:
+        return RedirectResponse("/cobros", status_code=303)
+
+    cliente_nombre = str(match.iloc[0]["nombre"])
+    tipo_cobro = str(match.iloc[0]["tipo_cobro"])
+
+    # guardar pago
+    pagos_df = _load_pagos()
+    nuevo = {
+        "cedula": cedula,
+        "cliente": cliente_nombre,
+        "fecha": fecha,
+        "valor": float(valor),
+        "tipo_cobro": tipo_cobro,
+    }
+
+    # aseguramos que existan columnas mínimas (por compatibilidad)
+    for col in ["cedula", "cliente", "fecha", "valor", "tipo_cobro"]:
+        if col not in pagos_df.columns:
+            pagos_df[col] = ""
+
+    pagos_df = pd.concat([pagos_df.drop(columns=["_fecha_dt"], errors="ignore"), pd.DataFrame([nuevo])], ignore_index=True)
+    _save_pagos(pagos_df)
+
+    return RedirectResponse("/cobros", status_code=303)
 
 
 @router.get("/cobros", response_class=HTMLResponse)
@@ -157,7 +208,7 @@ def ver_cobros(request: Request):
 
     df["debe"] = df.apply(debe, axis=1)
 
-    # ✅ ALERTA: moroso si saldo>0 y no pagó en el periodo
+    # alerta: saldo>0 y no pagó en el periodo
     def alerta(row):
         tipo = (row.get("tipo_cobro") or "").strip().lower()
         saldo = float(row.get("saldo") or 0)
@@ -174,12 +225,10 @@ def ver_cobros(request: Request):
 
     df["alerta"] = df.apply(alerta, axis=1)
 
-    # ordenar: alertas primero, luego debe y saldo
+    # ordenar: alertas primero
     df = df.sort_values(by=["alerta", "debe", "saldo"], ascending=[False, False, False])
 
     filas = df.to_dict(orient="records")
-
-    # contador de alertas
     total_alertas = int(df["alerta"].sum()) if "alerta" in df.columns else 0
 
     return templates.TemplateResponse(
