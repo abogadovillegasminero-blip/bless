@@ -12,7 +12,8 @@ from app.saldos import router as saldos_router
 from app.reportes import router as reportes_router
 from app.admin_users import router as admin_users_router
 from app.dashboard import router as dashboard_router
-from app.clientes_detalle import router as clientes_detalle_router  # ✅ NUEVO
+from app.clientes_detalle import router as clientes_detalle_router
+from app.cobros import router as cobros_router  # ✅ NUEVO
 
 app = FastAPI()
 
@@ -116,6 +117,7 @@ def home(request: Request):
             <a href="/dashboard">📊 Dashboard</a>
             <a href="/clientes">👥 Clientes</a>
             <a href="/pagos">💵 Pagos</a>
+            <a href="/cobros">🧾 Cobros</a>
             <a href="/saldos">📊 Saldos</a>
 
             {"<a class='admin' href='/reportes'>📈 Reportes</a>" if es_admin else ""}
@@ -134,4 +136,5 @@ app.include_router(saldos_router)
 app.include_router(reportes_router)
 app.include_router(admin_users_router)
 app.include_router(dashboard_router)
-app.include_router(clientes_detalle_router)  # ✅ NUEVO
+app.include_router(clientes_detalle_router)
+app.include_router(cobros_router)  # ✅ NUEVO
