@@ -64,4 +64,76 @@
         <option value="user">user</option>
         <option value="admin">admin</option>
       </select>
-      <button type="submit" style="padding:10px 14px; border:none; border-radius:8px; b
+      <button type="submit" style="padding:10px 14px; border:none; border-radius:8px; background:#2c7be5; color:white; font-weight:bold; cursor:pointer;">
+        Crear usuario
+      </button>
+    </form>
+
+    <h3 style="margin:18px 0 10px;">📋 Usuarios actuales</h3>
+
+    <table style="width:100%; border-collapse:collapse; background:white;">
+      <tr style="background:#222; color:white;">
+        <th style="padding:10px; text-align:left;">Usuario</th>
+        <th style="padding:10px; text-align:left;">Rol</th>
+        <th style="padding:10px; text-align:left;">Acciones</th>
+      </tr>
+
+      {% for u in usuarios %}
+        {% set es_mi_usuario = (u.username == user.username) %}
+        {% set es_ultimo_admin = (u.role == "admin" and admins_count == 1) %}
+
+        <tr style="border-bottom:1px solid #eee;">
+          <td style="padding:10px;">{{ u.username }}</td>
+          <td style="padding:10px; font-weight:bold;">{{ u.role }}</td>
+          <td style="padding:10px;">
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+
+              <form method="post" action="/admin/usuarios/cambiar_rol" style="margin:0;">
+                <input type="hidden" name="username" value="{{ u.username }}">
+                <button type="submit"
+                  {% if es_mi_usuario or es_ultimo_admin %}disabled{% endif %}
+                  style="
+                    padding:8px 10px; border:none; border-radius:8px; cursor:pointer; font-weight:bold;
+                    background:#6f42c1; color:white;
+                    {% if es_mi_usuario or es_ultimo_admin %}opacity:.45; cursor:not-allowed;{% endif %}
+                  ">
+                  {% if u.role == "user" %}Hacer admin{% else %}Hacer user{% endif %}
+                </button>
+              </form>
+
+              <form method="post" action="/admin/usuarios/eliminar" style="margin:0;"
+                    onsubmit="return confirm('¿Eliminar el usuario {{ u.username }}?');">
+                <input type="hidden" name="username" value="{{ u.username }}">
+                <button type="submit"
+                  {% if es_mi_usuario or es_ultimo_admin %}disabled{% endif %}
+                  style="
+                    padding:8px 10px; border:none; border-radius:8px; cursor:pointer; font-weight:bold;
+                    background:#dc3545; color:white;
+                    {% if es_mi_usuario or es_ultimo_admin %}opacity:.45; cursor:not-allowed;{% endif %}
+                  ">
+                  Eliminar
+                </button>
+              </form>
+
+              {% if es_mi_usuario %}
+                <span style="color:#666; font-size:12px;">(tu usuario)</span>
+              {% elif es_ultimo_admin %}
+                <span style="color:#666; font-size:12px;">(último admin)</span>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+      {% endfor %}
+    </table>
+
+    <div style="display:flex; gap:10px; margin-top:16px;">
+      <a href="/" style="display:inline-block; padding:10px 14px; background:#6c757d; color:white; text-decoration:none; border-radius:10px; font-weight:bold;">
+        ⬅ Volver
+      </a>
+      <a href="/logout" style="display:inline-block; padding:10px 14px; background:#dc3545; color:white; text-decoration:none; border-radius:10px; font-weight:bold;">
+        🔒 Cerrar sesión
+      </a>
+    </div>
+  </div>
+</body>
+</html>
