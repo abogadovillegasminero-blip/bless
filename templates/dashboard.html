@@ -1,186 +1,74 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+<div class="d-flex justify-content-between align-items-center mb-3">
   <h2 class="m-0">📊 Dashboard</h2>
-
-  <div class="d-flex gap-2 mt-2 mt-md-0">
-    <a href="/clientes" class="btn btn-outline-primary btn-sm">👥 Clientes</a>
-    <a href="/pagos" class="btn btn-outline-success btn-sm">💵 Pagos</a>
-    <a href="/saldos" class="btn btn-outline-dark btn-sm">📌 Saldos</a>
-  </div>
-</div>
-
-<div class="card p-3 mb-3">
-  <form method="get" action="/dashboard" class="row g-2 align-items-center">
-    <div class="col-md-9">
-      <input class="form-control" name="q" value="{{ q }}" placeholder="Buscar cliente por cédula o nombre...">
-    </div>
-    <div class="col-md-3 d-grid">
-      <button class="btn btn-primary">Buscar</button>
-    </div>
-  </form>
-</div>
-
-{% if resumen_cliente %}
-<div class="card p-3 mb-3">
-  <div class="d-flex justify-content-between align-items-center mb-2">
-    <h5 class="m-0">🔎 Resultado</h5>
-    <a class="btn btn-success btn-sm" href="/pagos?cedula={{ resumen_cliente.cedula }}">➕ Registrar pago a este cliente</a>
-  </div>
-
-  <div class="row g-3">
-    <div class="col-md-3">
-      <div class="text-muted">Cliente</div>
-      <div style="font-weight:800">{{ resumen_cliente.nombre }}</div>
-    </div>
-    <div class="col-md-3">
-      <div class="text-muted">Cédula</div>
-      <div style="font-weight:800">{{ resumen_cliente.cedula }}</div>
-    </div>
-    <div class="col-md-2">
-      <div class="text-muted">Préstamo</div>
-      <div style="font-weight:800">$ {{ "{:,.0f}".format(resumen_cliente.monto|float).replace(",", ".") }}</div>
-    </div>
-    <div class="col-md-2">
-      <div class="text-muted">Pagado</div>
-      <div style="font-weight:800">$ {{ "{:,.0f}".format(resumen_cliente.pagado|float).replace(",", ".") }}</div>
-    </div>
-    <div class="col-md-2">
-      <div class="text-muted">Saldo</div>
-      <div style="font-weight:800">$ {{ "{:,.0f}".format(resumen_cliente.saldo|float).replace(",", ".") }}</div>
-    </div>
-  </div>
-
-  <hr>
-
-  <h6 class="mb-2">Pagos del cliente</h6>
-
-  <table class="table table-bordered bg-white m-0">
-    <thead>
-      <tr>
-        <th>Fecha</th>
-        <th>Valor</th>
-        <th>Tipo cobro</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% if pagos_cliente|length == 0 %}
-        <tr><td colspan="3" class="text-center">Este cliente no tiene pagos registrados</td></tr>
-      {% endif %}
-      {% for p in pagos_cliente %}
-      <tr>
-        <td>{{ p["fecha"] }}</td>
-        <td>$ {{ "{:,.0f}".format(p["valor"]|float).replace(",", ".") }}</td>
-        <td>{{ p["tipo_cobro"] }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-</div>
-{% endif %}
-
-<div class="row g-3 mb-3">
-  <div class="col-md-3">
-    <div class="card p-3">
-      <div class="text-muted">Clientes</div>
-      <div style="font-size:28px; font-weight:800;">{{ total_clientes }}</div>
-    </div>
-  </div>
-
-  <div class="col-md-3">
-    <div class="card p-3">
-      <div class="text-muted">Total prestado</div>
-      <div style="font-size:28px; font-weight:800;">
-        $ {{ "{:,.0f}".format(total_prestado|float).replace(",", ".") }}
-      </div>
-    </div>
-  </div>
-
-  <div class="col-md-3">
-    <div class="card p-3">
-      <div class="text-muted">Total pagado</div>
-      <div style="font-size:28px; font-weight:800;">
-        $ {{ "{:,.0f}".format(total_pagado|float).replace(",", ".") }}
-      </div>
-    </div>
-  </div>
-
-  <div class="col-md-3">
-    <div class="card p-3">
-      <div class="text-muted">Saldo total</div>
-      <div style="font-size:28px; font-weight:800;">
-        $ {{ "{:,.0f}".format(total_saldo|float).replace(",", ".") }}
-      </div>
-    </div>
+  <div class="text-muted">
+    Usuario: <b>{{ user.username }}</b>
+    {% if user.role == "admin" %}
+      <span class="badge bg-dark ms-2">ADMIN</span>
+    {% else %}
+      <span class="badge bg-secondary ms-2">USER</span>
+    {% endif %}
   </div>
 </div>
 
 <div class="row g-3">
-  <div class="col-lg-6">
-    <div class="card p-3">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <h5 class="m-0">Top saldos (mayores)</h5>
-        <a href="/saldos" class="btn btn-primary btn-sm">Ver todos</a>
+  <div class="col-md-4">
+    <a class="text-decoration-none" href="/clientes">
+      <div class="card p-3">
+        <h5 class="m-0">👥 Clientes</h5>
+        <div class="text-muted">Registrar y ver clientes</div>
       </div>
-
-      <table class="table table-bordered bg-white m-0">
-        <thead>
-          <tr>
-            <th>Nombre</th>
-            <th>Cédula</th>
-            <th>Saldo</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% if top_saldos|length == 0 %}
-            <tr><td colspan="3" class="text-center">Sin datos</td></tr>
-          {% endif %}
-
-          {% for r in top_saldos %}
-          <tr>
-            <td>{{ r["nombre"] }}</td>
-            <td>{{ r["cedula"] }}</td>
-            <td><b>$ {{ "{:,.0f}".format(r["saldo"]|float).replace(",", ".") }}</b></td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+    </a>
   </div>
 
-  <div class="col-lg-6">
-    <div class="card p-3">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <h5 class="m-0">Últimos pagos</h5>
-        <a href="/pagos" class="btn btn-success btn-sm">Registrar / Ver</a>
+  <div class="col-md-4">
+    <a class="text-decoration-none" href="/pagos">
+      <div class="card p-3">
+        <h5 class="m-0">💵 Pagos</h5>
+        <div class="text-muted">Registrar / editar / eliminar pagos</div>
       </div>
-
-      <table class="table table-bordered bg-white m-0">
-        <thead>
-          <tr>
-            <th>Cliente</th>
-            <th>Fecha</th>
-            <th>Valor</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% if ultimos_pagos|length == 0 %}
-            <tr><td colspan="3" class="text-center">No hay pagos</td></tr>
-          {% endif %}
-
-          {% for p in ultimos_pagos %}
-          <tr>
-            <td>{{ p["cliente"] }}</td>
-            <td>{{ p["fecha"] }}</td>
-            <td>$ {{ "{:,.0f}".format(p["valor"]|float).replace(",", ".") }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+    </a>
   </div>
+
+  <div class="col-md-4">
+    <a class="text-decoration-none" href="/cobros">
+      <div class="card p-3">
+        <h5 class="m-0">🧾 Cobros</h5>
+        <div class="text-muted">Plan diario/semanal + pago rápido</div>
+      </div>
+    </a>
+  </div>
+
+  <div class="col-md-4">
+    <a class="text-decoration-none" href="/saldos">
+      <div class="card p-3">
+        <h5 class="m-0">📌 Saldos</h5>
+        <div class="text-muted">Saldo por cliente</div>
+      </div>
+    </a>
+  </div>
+
+  {% if user.role == "admin" %}
+  <div class="col-md-4">
+    <a class="text-decoration-none" href="/reportes">
+      <div class="card p-3">
+        <h5 class="m-0">📈 Reportes</h5>
+        <div class="text-muted">Exportar a Excel</div>
+      </div>
+    </a>
+  </div>
+
+  <div class="col-md-4">
+    <a class="text-decoration-none" href="/admin/usuarios">
+      <div class="card p-3">
+        <h5 class="m-0">👤 Usuarios</h5>
+        <div class="text-muted">Crear / eliminar / cambiar rol</div>
+      </div>
+    </a>
+  </div>
+  {% endif %}
 </div>
 
 {% endblock %}
