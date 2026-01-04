@@ -1,5 +1,5 @@
 import os
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 
 import pandas as pd
 from fastapi import APIRouter, Request, Form
@@ -46,21 +46,24 @@ def _load_clientes():
 
 def _load_pagos():
     if not os.path.exists(PAGOS_XLSX):
-        return pd.DataFrame(columns=["cedula", "cliente", "fecha", "valor", "tipo_cobro", "_fecha_dt"])
+        return pd.DataFrame(columns=[
+            "cedula", "cliente", "fecha", "hora", "valor", "tipo_cobro", "registrado_por", "_fecha_dt"
+        ])
 
     df = pd.read_excel(PAGOS_XLSX)
 
-    # compatibilidad si antes guardaste como "monto"
     if "monto" in df.columns and "valor" not in df.columns:
         df.rename(columns={"monto": "valor"}, inplace=True)
 
-    for col in ["cedula", "cliente", "fecha", "valor", "tipo_cobro"]:
+    # ✅ asegurar columnas nuevas
+    for col in ["cedula", "cliente", "fecha", "hora", "valor", "tipo_cobro", "registrado_por"]:
         if col not in df.columns:
             df[col] = ""
 
     df["cedula"] = df["cedula"].astype(str)
     df["cliente"] = df["cliente"].astype(str).replace(["nan", "NaT", "None"], "")
     df["fecha"] = df["fecha"].astype(str).replace(["nan", "NaT", "None"], "")
+    df["hora"] = df["hora"].astype(str).replace(["nan", "NaT", "None"], "")
     df["tipo_cobro"] = (
         df["tipo_cobro"]
         .astype(str)
@@ -68,7 +71,9 @@ def _load_pagos():
         .str.lower()
         .str.strip()
     )
+    df["registrado_por"] = df["registrado_por"].astype(str).replace(["nan", "NaT", "None"], "")
     df["valor"] = pd.to_numeric(df["valor"], errors="coerce").fillna(0)
+
     df["_fecha_dt"] = pd.to_datetime(df["fecha"], errors="coerce").dt.date
 
     return df
@@ -85,7 +90,6 @@ def _start_of_week(d: date) -> date:
 
 
 def _saldo_actual(cedula: str) -> float:
-    """Saldo = monto - pagos_total, mínimo 0."""
     cedula = str(cedula).strip()
 
     clientes = _load_clientes()
@@ -117,16 +121,19 @@ def pago_rapido(
 
     cedula = str(cedula).strip()
 
-    # ✅ fecha automática (hoy)
-    fecha_hoy = date.today().isoformat()
+    # ✅ fecha y hora exacta
+    now = datetime.now()
+    fecha_hoy = now.date().isoformat()
+    hora = now.strftime("%H:%M:%S")
 
-    # validar cliente existe
+    # usuario que registra
+    registrado_por = str(user.get("username") or "")
+
     clientes = _load_clientes()
     match = clientes[clientes["cedula"].astype(str) == cedula]
     if match.empty:
         return RedirectResponse("/cobros", status_code=303)
 
-    # ✅ no permitir pagar más del saldo (backend)
     saldo = _saldo_actual(cedula)
     if saldo <= 0:
         return RedirectResponse("/cobros", status_code=303)
@@ -136,7 +143,7 @@ def pago_rapido(
         return RedirectResponse("/cobros", status_code=303)
 
     if valor_num > saldo:
-        valor_num = saldo  # cap automático
+        valor_num = saldo
 
     cliente_nombre = str(match.iloc[0]["nombre"])
     tipo_cobro = str(match.iloc[0]["tipo_cobro"])
@@ -147,11 +154,14 @@ def pago_rapido(
         "cedula": cedula,
         "cliente": cliente_nombre,
         "fecha": fecha_hoy,
+        "hora": hora,
         "valor": float(valor_num),
         "tipo_cobro": tipo_cobro,
+        "registrado_por": registrado_por,
     }
 
-    for col in ["cedula", "cliente", "fecha", "valor", "tipo_cobro"]:
+    # asegurar columnas (por si excel viejo)
+    for col in ["cedula", "cliente", "fecha", "hora", "valor", "tipo_cobro", "registrado_por"]:
         if col not in pagos_df.columns:
             pagos_df[col] = ""
 
@@ -213,7 +223,6 @@ def ver_cobros(request: Request):
     def cuota_sugerida(row):
         tipo = (row.get("tipo_cobro") or "").strip().lower()
         monto = float(row.get("monto") or 0)
-
         if tipo == "diario":
             return round(monto / DAILY_TERM_DAYS, 2) if DAILY_TERM_DAYS > 0 else 0
         if tipo == "semanal":
@@ -225,7 +234,6 @@ def ver_cobros(request: Request):
     def debe(row):
         tipo = (row.get("tipo_cobro") or "").strip().lower()
         cuota = float(row.get("cuota_sugerida") or 0)
-
         if tipo == "diario":
             return max(cuota - float(row.get("pagado_hoy") or 0), 0)
         if tipo == "semanal":
@@ -247,8 +255,11 @@ def ver_cobros(request: Request):
 
     df["alerta"] = df.apply(alerta, axis=1)
 
-    # ✅ valor sugerido: min(debe, saldo)
-    df["valor_sugerido"] = df.apply(lambda r: min(float(r.get("debe") or 0), float(r.get("saldo") or 0)), axis=1)
+    # ✅ sugerido: min(debe, saldo)
+    df["valor_sugerido"] = df.apply(
+        lambda r: min(float(r.get("debe") or 0), float(r.get("saldo") or 0)),
+        axis=1
+    )
 
     df = df.sort_values(by=["alerta", "debe", "saldo"], ascending=[False, False, False])
 
