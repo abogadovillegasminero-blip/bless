@@ -47,10 +47,10 @@
     <table class="table table-bordered bg-white m-0">
       <thead>
         <tr>
-          <th>ID</th>
+          <th style="width:70px;">ID</th>
           <th>Usuario</th>
-          <th>Rol</th>
-          <th style="width: 340px;">Acciones</th>
+          <th style="width:110px;">Rol</th>
+          <th style="width:520px;">Acciones</th>
         </tr>
       </thead>
 
@@ -71,21 +71,41 @@
             {% endif %}
           </td>
 
-          <td class="d-flex gap-2">
-            <form method="post" action="/admin/usuarios/cambiar_rol" class="d-flex gap-2 w-100">
-              <input type="hidden" name="user_id" value="{{ u.id }}">
-              <select name="role" class="form-control form-control-sm">
-                <option value="user" {% if u.role == "user" %}selected{% endif %}>user</option>
-                <option value="admin" {% if u.role == "admin" %}selected{% endif %}>admin</option>
-              </select>
-              <button class="btn btn-warning btn-sm" onclick="return confirm('¿Cambiar rol?');">Cambiar</button>
-            </form>
+          <td>
+            <div class="d-flex gap-2 flex-wrap">
 
-            <form method="post" action="/admin/usuarios/eliminar" class="w-100"
-                  onsubmit="return confirm('¿Eliminar este usuario?');">
-              <input type="hidden" name="user_id" value="{{ u.id }}">
-              <button class="btn btn-danger btn-sm w-100">Eliminar</button>
-            </form>
+              <!-- Cambiar rol -->
+              <form method="post" action="/admin/usuarios/cambiar_rol" class="d-flex gap-2">
+                <input type="hidden" name="user_id" value="{{ u.id }}">
+                <select name="role" class="form-control form-control-sm" style="width:120px;">
+                  <option value="user" {% if u.role == "user" %}selected{% endif %}>user</option>
+                  <option value="admin" {% if u.role == "admin" %}selected{% endif %}>admin</option>
+                </select>
+                <button class="btn btn-warning btn-sm"
+                        onclick="return confirm('¿Cambiar rol de este usuario?');">
+                  Cambiar rol
+                </button>
+              </form>
+
+              <!-- Reset password -->
+              <form method="post" action="/admin/usuarios/reset_password" class="d-flex gap-2">
+                <input type="hidden" name="user_id" value="{{ u.id }}">
+                <input type="password" name="new_password" class="form-control form-control-sm"
+                       placeholder="Nueva clave" style="width:160px;" required>
+                <button class="btn btn-info btn-sm"
+                        onclick="return confirm('¿Resetear contraseña de este usuario?');">
+                  Reset clave
+                </button>
+              </form>
+
+              <!-- Eliminar -->
+              <form method="post" action="/admin/usuarios/eliminar"
+                    onsubmit="return confirm('¿Eliminar este usuario?');">
+                <input type="hidden" name="user_id" value="{{ u.id }}">
+                <button class="btn btn-danger btn-sm">Eliminar</button>
+              </form>
+
+            </div>
           </td>
         </tr>
         {% endfor %}
