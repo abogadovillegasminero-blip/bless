@@ -1,180 +1,131 @@
+# app/reportes.py
 import os
-from datetime import date
+import sqlite3
+from datetime import datetime
+from io import BytesIO
 
-import pandas as pd
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi.responses import StreamingResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.auth import require_admin
-from app.db import get_connection
+from openpyxl import Workbook
+from openpyxl.styles import Font
 
-router = APIRouter(prefix="/reportes", tags=["Reportes"])
+from app.auth import require_admin
+
+router = APIRouter(prefix="/reportes", tags=["reportes"])
 templates = Jinja2Templates(directory="templates")
 
-DATA_DIR = "data"
-EXPORT_PAGOS_XLSX = f"{DATA_DIR}/reporte_pagos.xlsx"
-EXPORT_TODO_XLSX = f"{DATA_DIR}/backup_bless.xlsx"
+DB_PATH = os.getenv("DB_PATH", "/tmp/bless.db")
 
 
-def _fetch_pagos(hoy: str, desde: str, hasta: str, cedula: str):
-    conn = get_connection()
-    cur = conn.cursor()
+def get_connection():
+    return sqlite3.connect(DB_PATH, check_same_thread=False)
 
-    sql = """
-        SELECT
-            id, cedula, cliente, fecha, hora, valor, tipo_cobro, registrado_por
-        FROM pagos
-        WHERE 1=1
+
+def _fetch_table_as_columns_and_rows(conn: sqlite3.Connection, table_name: str):
     """
-    params = []
-
-    if hoy == "1":
-        sql += " AND fecha = ?"
-        params.append(date.today().isoformat())
-
-    if desde and hasta:
-        sql += " AND fecha >= ? AND fecha <= ?"
-        params.extend([desde, hasta])
-
-    if cedula:
-        sql += " AND cedula LIKE ?"
-        params.append(f"%{cedula.strip()}%")
-
-    sql += " ORDER BY id DESC"
-
-    cur.execute(sql, params)
-    rows = cur.fetchall()
-    conn.close()
-
-    return [dict(r) for r in rows]
-
-
-def _fetch_all_clientes():
-    conn = get_connection()
+    Lee columnas reales con PRAGMA table_info (sin inventar campos)
+    y trae todos los registros.
+    """
     cur = conn.cursor()
-    cur.execute("""
-        SELECT id, nombre, cedula, telefono, monto, tipo_cobro, created_at
-        FROM clientes
-        ORDER BY id DESC
-    """)
+
+    cur.execute(f'PRAGMA table_info("{table_name}")')
+    cols_info = cur.fetchall()
+    columns = [c[1] for c in cols_info]  # name
+
+    if not columns:
+        return [], []
+
+    # Ordena por id si existe (no inventa nada, solo usa si está)
+    order_clause = ""
+    if "id" in columns:
+        order_clause = ' ORDER BY "id" ASC'
+
+    select_cols = ", ".join([f'"{c}"' for c in columns])
+    cur.execute(f'SELECT {select_cols} FROM "{table_name}"{order_clause}')
     rows = cur.fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+
+    return columns, rows
 
 
-def _fetch_all_pagos():
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT id, cedula, cliente, fecha, hora, valor, tipo_cobro, registrado_por, created_at
-        FROM pagos
-        ORDER BY id DESC
-    """)
-    rows = cur.fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+def _autosize_worksheet(ws):
+    for col_cells in ws.columns:
+        max_len = 0
+        col_letter = col_cells[0].column_letter
+        for cell in col_cells:
+            value = "" if cell.value is None else str(cell.value)
+            if len(value) > max_len:
+                max_len = len(value)
+        ws.column_dimensions[col_letter].width = max(10, min(max_len + 2, 60))
 
 
-@router.get("", response_class=HTMLResponse)
-@router.get("/", response_class=HTMLResponse)
-def ver_reportes(request: Request):
+@router.get("")
+def reportes_page(request: Request):
     user = require_admin(request)
     if isinstance(user, RedirectResponse):
         return user
-
-    hoy = request.query_params.get("hoy") or ""
-    desde = (request.query_params.get("desde") or "").strip()
-    hasta = (request.query_params.get("hasta") or "").strip()
-    cedula = (request.query_params.get("cedula") or "").strip()
-    error = request.query_params.get("error") or ""
-
-    pagos = _fetch_pagos(hoy, desde, hasta, cedula)
-    cantidad = len(pagos)
-    total = sum(float(p.get("valor", 0) or 0) for p in pagos)
 
     return templates.TemplateResponse(
         "reportes.html",
-        {
-            "request": request,
-            "user": user,
-            "pagos": pagos,
-            "cantidad": cantidad,
-            "total": total,
-            "hoy": hoy,
-            "desde": desde,
-            "hasta": hasta,
-            "cedula": cedula,
-            "error": error,
-        },
+        {"request": request, "user": user},
     )
 
 
-@router.get("/exportar")
-def exportar_excel(request: Request):
+@router.get("/exportar-todo")
+def exportar_todo(request: Request):
     user = require_admin(request)
     if isinstance(user, RedirectResponse):
         return user
 
-    hoy = request.query_params.get("hoy") or ""
-    desde = (request.query_params.get("desde") or "").strip()
-    hasta = (request.query_params.get("hasta") or "").strip()
-    cedula = (request.query_params.get("cedula") or "").strip()
+    conn = get_connection()
+    try:
+        clientes_cols, clientes_rows = _fetch_table_as_columns_and_rows(conn, "clientes")
+        pagos_cols, pagos_rows = _fetch_table_as_columns_and_rows(conn, "pagos")
 
-    pagos = _fetch_pagos(hoy, desde, hasta, cedula)
-    if not pagos:
-        return RedirectResponse("/reportes?error=1", status_code=303)
+        wb = Workbook()
+        wb.remove(wb.active)  # quita hoja por defecto
 
-    os.makedirs(DATA_DIR, exist_ok=True)
+        # Hoja CLIENTES
+        ws_clientes = wb.create_sheet("CLIENTES")
+        if clientes_cols:
+            ws_clientes.append(clientes_cols)
+            for cell in ws_clientes[1]:
+                cell.font = Font(bold=True)
+            for r in clientes_rows:
+                ws_clientes.append([("" if v is None else v) for v in r])
+            _autosize_worksheet(ws_clientes)
+        else:
+            ws_clientes.append(["Sin datos (tabla clientes no encontrada o sin columnas)"])
+            ws_clientes["A1"].font = Font(bold=True)
 
-    df = pd.DataFrame(pagos)
-    cols = ["cliente", "cedula", "fecha", "hora", "valor", "tipo_cobro", "registrado_por"]
-    df = df[[c for c in cols if c in df.columns]]
-    df.to_excel(EXPORT_PAGOS_XLSX, index=False)
+        # Hoja PAGOS
+        ws_pagos = wb.create_sheet("PAGOS")
+        if pagos_cols:
+            ws_pagos.append(pagos_cols)
+            for cell in ws_pagos[1]:
+                cell.font = Font(bold=True)
+            for r in pagos_rows:
+                ws_pagos.append([("" if v is None else v) for v in r])
+            _autosize_worksheet(ws_pagos)
+        else:
+            ws_pagos.append(["Sin datos (tabla pagos no encontrada o sin columnas)"])
+            ws_pagos["A1"].font = Font(bold=True)
 
-    return FileResponse(
-        EXPORT_PAGOS_XLSX,
-        filename="reporte_pagos.xlsx",
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
 
+        filename = f"BLESS_export_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
 
-@router.get("/exportar_todo")
-def exportar_todo_excel(request: Request):
-    """
-    ✅ BACKUP COMPLETO DE LA BD
-    Genera un .xlsx con 2 hojas: CLIENTES y PAGOS.
-    """
-    user = require_admin(request)
-    if isinstance(user, RedirectResponse):
-        return user
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
-    os.makedirs(DATA_DIR, exist_ok=True)
-
-    clientes = _fetch_all_clientes()
-    pagos = _fetch_all_pagos()
-
-    if not clientes and not pagos:
-        return RedirectResponse("/reportes?error=1", status_code=303)
-
-    df_clientes = pd.DataFrame(clientes)
-    df_pagos = pd.DataFrame(pagos)
-
-    # Orden sugerido
-    if not df_clientes.empty:
-        cols_c = ["id", "nombre", "cedula", "telefono", "monto", "tipo_cobro", "created_at"]
-        df_clientes = df_clientes[[c for c in cols_c if c in df_clientes.columns]]
-
-    if not df_pagos.empty:
-        cols_p = ["id", "cedula", "cliente", "fecha", "hora", "valor", "tipo_cobro", "registrado_por", "created_at"]
-        df_pagos = df_pagos[[c for c in cols_p if c in df_pagos.columns]]
-
-    with pd.ExcelWriter(EXPORT_TODO_XLSX, engine="openpyxl") as writer:
-        df_clientes.to_excel(writer, sheet_name="CLIENTES", index=False)
-        df_pagos.to_excel(writer, sheet_name="PAGOS", index=False)
-
-    return FileResponse(
-        EXPORT_TODO_XLSX,
-        filename="backup_bless.xlsx",
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
