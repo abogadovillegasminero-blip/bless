@@ -14,6 +14,7 @@ templates = Jinja2Templates(directory="templates")
 DATA_DIR = "data"
 CLIENTES_XLSX = f"{DATA_DIR}/clientes.xlsx"
 PAGOS_XLSX = f"{DATA_DIR}/pagos.xlsx"
+NO_COBRAR_XLSX = f"{DATA_DIR}/no_cobrar_hoy.xlsx"
 
 DAILY_TERM_DAYS = 30
 WEEKLY_TERM_WEEKS = 12
@@ -55,7 +56,6 @@ def _load_pagos():
     if "monto" in df.columns and "valor" not in df.columns:
         df.rename(columns={"monto": "valor"}, inplace=True)
 
-    # ✅ asegurar columnas nuevas
     for col in ["cedula", "cliente", "fecha", "hora", "valor", "tipo_cobro", "registrado_por"]:
         if col not in df.columns:
             df[col] = ""
@@ -89,6 +89,28 @@ def _start_of_week(d: date) -> date:
     return d - timedelta(days=d.weekday())
 
 
+def _load_no_cobrar():
+    if not os.path.exists(NO_COBRAR_XLSX):
+        return pd.DataFrame(columns=["cedula", "fecha", "hora", "registrado_por"])
+
+    df = pd.read_excel(NO_COBRAR_XLSX)
+
+    for col in ["cedula", "fecha", "hora", "registrado_por"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    df["cedula"] = df["cedula"].astype(str)
+    df["fecha"] = df["fecha"].astype(str).replace(["nan", "NaT", "None"], "")
+    df["hora"] = df["hora"].astype(str).replace(["nan", "NaT", "None"], "")
+    df["registrado_por"] = df["registrado_por"].astype(str).replace(["nan", "NaT", "None"], "")
+
+    return df
+
+
+def _save_no_cobrar(df: pd.DataFrame):
+    df.to_excel(NO_COBRAR_XLSX, index=False)
+
+
 def _saldo_actual(cedula: str) -> float:
     cedula = str(cedula).strip()
 
@@ -109,6 +131,51 @@ def _saldo_actual(cedula: str) -> float:
     return float(saldo)
 
 
+# =========================
+# NO COBRAR HOY
+# =========================
+@router.post("/cobros/no_cobrar_hoy")
+def no_cobrar_hoy(
+    request: Request,
+    cedula: str = Form(...),
+):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    cedula = str(cedula).strip()
+    hoy = date.today().isoformat()
+
+    now = datetime.now()
+    hora = now.strftime("%H:%M:%S")
+    registrado_por = str(user.get("username") or "")
+
+    df = _load_no_cobrar()
+
+    # si ya existe para hoy, no duplica
+    ya = df[
+        (df["cedula"].astype(str) == cedula) &
+        (df["fecha"].astype(str) == hoy)
+    ]
+    if not ya.empty:
+        return RedirectResponse("/cobros", status_code=303)
+
+    nuevo = {
+        "cedula": cedula,
+        "fecha": hoy,
+        "hora": hora,
+        "registrado_por": registrado_por,
+    }
+
+    df = pd.concat([df, pd.DataFrame([nuevo])], ignore_index=True)
+    _save_no_cobrar(df)
+
+    return RedirectResponse("/cobros", status_code=303)
+
+
+# =========================
+# PAGO RÁPIDO (HOY)
+# =========================
 @router.post("/cobros/pago_rapido")
 def pago_rapido(
     request: Request,
@@ -121,12 +188,9 @@ def pago_rapido(
 
     cedula = str(cedula).strip()
 
-    # ✅ fecha y hora exacta
     now = datetime.now()
     fecha_hoy = now.date().isoformat()
     hora = now.strftime("%H:%M:%S")
-
-    # usuario que registra
     registrado_por = str(user.get("username") or "")
 
     clientes = _load_clientes()
@@ -142,6 +206,7 @@ def pago_rapido(
     if valor_num <= 0:
         return RedirectResponse("/cobros", status_code=303)
 
+    # ✅ cap: nunca pagar más del saldo
     if valor_num > saldo:
         valor_num = saldo
 
@@ -160,7 +225,6 @@ def pago_rapido(
         "registrado_por": registrado_por,
     }
 
-    # asegurar columnas (por si excel viejo)
     for col in ["cedula", "cliente", "fecha", "hora", "valor", "tipo_cobro", "registrado_por"]:
         if col not in pagos_df.columns:
             pagos_df[col] = ""
@@ -174,6 +238,9 @@ def pago_rapido(
     return RedirectResponse("/cobros", status_code=303)
 
 
+# =========================
+# PANTALLA COBROS
+# =========================
 @router.get("/cobros", response_class=HTMLResponse)
 def ver_cobros(request: Request):
     user = require_user(request)
@@ -181,10 +248,17 @@ def ver_cobros(request: Request):
         return user
 
     today = date.today()
+    today_str = today.isoformat()
     week_start = _start_of_week(today)
 
     clientes = _load_clientes()
     pagos = _load_pagos()
+
+    # lista negra de hoy
+    no_cobrar_df = _load_no_cobrar()
+    omitidos_hoy = set(
+        no_cobrar_df[no_cobrar_df["fecha"].astype(str) == today_str]["cedula"].astype(str).tolist()
+    )
 
     pagos_hoy = (
         pagos[pagos["_fecha_dt"] == today]
@@ -242,7 +316,16 @@ def ver_cobros(request: Request):
 
     df["debe"] = df.apply(debe, axis=1)
 
+    def omitido(row):
+        return str(row.get("cedula") or "") in omitidos_hoy
+
+    df["omitido_hoy"] = df.apply(omitido, axis=1)
+
     def alerta(row):
+        ced = str(row.get("cedula") or "")
+        if ced in omitidos_hoy:
+            return False  # ✅ no aparece como alerta hoy
+
         tipo = (row.get("tipo_cobro") or "").strip().lower()
         saldo = float(row.get("saldo") or 0)
         if saldo <= 0:
@@ -255,16 +338,18 @@ def ver_cobros(request: Request):
 
     df["alerta"] = df.apply(alerta, axis=1)
 
-    # ✅ sugerido: min(debe, saldo)
+    # sugerido: min(debe, saldo)
     df["valor_sugerido"] = df.apply(
         lambda r: min(float(r.get("debe") or 0), float(r.get("saldo") or 0)),
         axis=1
     )
 
-    df = df.sort_values(by=["alerta", "debe", "saldo"], ascending=[False, False, False])
+    total_alertas = int(df["alerta"].sum()) if "alerta" in df.columns else 0
+
+    # orden: primero alertas reales, luego resto, y omitidos al final
+    df = df.sort_values(by=["alerta", "omitido_hoy", "debe", "saldo"], ascending=[False, True, False, False])
 
     filas = df.to_dict(orient="records")
-    total_alertas = int(df["alerta"].sum()) if "alerta" in df.columns else 0
 
     return templates.TemplateResponse(
         "cobros.html",
@@ -272,7 +357,7 @@ def ver_cobros(request: Request):
             "request": request,
             "user": user,
             "filas": filas,
-            "today": today.isoformat(),
+            "today": today_str,
             "week_start": week_start.isoformat(),
             "total_alertas": total_alertas,
         }
