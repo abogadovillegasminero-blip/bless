@@ -1,74 +1,83 @@
 {% extends "base.html" %}
 {% block content %}
 
-<h2>Clientes</h2>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="m-0">👥 Clientes</h2>
+  <a class="btn btn-secondary btn-sm" href="/dashboard">⬅ Volver</a>
+</div>
 
 <form method="post" action="/clientes/guardar" class="card p-3 mb-4">
-  <div class="row">
-    <div class="col">
-      <input name="nombre" class="form-control" placeholder="Nombre" required>
+  <div class="row g-3">
+    <div class="col-md-4">
+      <label class="form-label">Nombre</label>
+      <input name="nombre" class="form-control" required>
     </div>
-    <div class="col">
-      <input name="cedula" class="form-control" placeholder="Cédula" required>
+    <div class="col-md-3">
+      <label class="form-label">Cédula</label>
+      <input name="cedula" class="form-control" required>
     </div>
-    <div class="col">
-      <input name="telefono" class="form-control" placeholder="Teléfono" required>
+    <div class="col-md-3">
+      <label class="form-label">Teléfono</label>
+      <input name="telefono" class="form-control" required>
     </div>
-  </div>
-
-  <div class="row mt-3">
-    <div class="col">
-      <input name="monto" type="number" class="form-control" placeholder="Monto" required>
+    <div class="col-md-2">
+      <label class="form-label">Monto</label>
+      <input name="monto" type="number" class="form-control" required min="0" step="0.01">
     </div>
-    <div class="col">
+    <div class="col-md-3">
+      <label class="form-label">Tipo de cobro</label>
       <select name="tipo_cobro" class="form-control" required>
-        <option value="">Tipo de cobro</option>
+        <option value="">Seleccione</option>
         <option value="diario">Diario</option>
         <option value="semanal">Semanal</option>
       </select>
     </div>
-    <div class="col">
+    <div class="col-md-3 d-flex align-items-end">
       <button class="btn btn-primary w-100">Guardar</button>
     </div>
   </div>
 </form>
 
-<table class="table table-bordered bg-white">
-  <thead>
-    <tr>
-      <th>Nombre</th>
-      <th>Cédula</th>
-      <th>Teléfono</th>
-      <th>Monto</th>
-      <th>Tipo cobro</th>
-      <th style="width:230px;">Acciones</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% if clientes|length == 0 %}
-      <tr><td colspan="6" class="text-center">No hay clientes</td></tr>
-    {% endif %}
+<div class="card p-3">
+  <div class="table-responsive">
+    <table class="table table-bordered bg-white m-0">
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>Cédula</th>
+          <th>Teléfono</th>
+          <th>Monto</th>
+          <th>Tipo cobro</th>
+          <th style="width:260px;">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if clientes|length == 0 %}
+          <tr><td colspan="6" class="text-center">No hay clientes</td></tr>
+        {% endif %}
 
-    {% for c in clientes %}
-    <tr>
-      <td>{{ c["nombre"] }}</td>
-      <td>{{ c["cedula"] }}</td>
-      <td>{{ c["telefono"] }}</td>
-      <td>$ {{ "{:,.0f}".format(c["monto"]|float).replace(",", ".") }}</td>
-      <td>{{ c["tipo_cobro"] }}</td>
-      <td>
-        <a class="btn btn-info btn-sm w-100 mb-1" href="/clientes/ver?cedula={{ c['cedula'] }}">Ver</a>
+        {% for c in clientes %}
+        <tr>
+          <td>{{ c.nombre }}</td>
+          <td>{{ c.cedula }}</td>
+          <td>{{ c.telefono }}</td>
+          <td>$ {{ "{:,.0f}".format(c.monto|float).replace(",", ".") }}</td>
+          <td>{{ c.tipo_cobro }}</td>
+          <td class="d-flex gap-2">
+            <a class="btn btn-info btn-sm w-100" href="/clientes/ver?cedula={{ c.cedula }}">Ver</a>
+            <a class="btn btn-warning btn-sm w-100" href="/clientes/editar/{{ loop.index0 }}">Editar</a>
 
-        <a class="btn btn-warning btn-sm w-100 mb-1" href="/clientes/editar?row_id={{ loop.index0 }}">Editar</a>
-
-        <form method="post" action="/clientes/eliminar" onsubmit="return confirm('¿Eliminar este cliente? Se borrarán también sus pagos.');">
-          <input type="hidden" name="row_id" value="{{ loop.index0 }}">
-          <button class="btn btn-danger btn-sm w-100">Eliminar</button>
-        </form>
-      </td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+            <form method="post" action="/clientes/eliminar" class="w-100"
+                  onsubmit="return confirm('¿Eliminar este cliente?');">
+              <input type="hidden" name="row_id" value="{{ loop.index0 }}">
+              <button class="btn btn-danger btn-sm w-100">Eliminar</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
 
 {% endblock %}
