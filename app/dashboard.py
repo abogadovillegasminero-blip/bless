@@ -24,7 +24,9 @@ def _load_clientes():
             df[col] = ""
 
     df["cedula"] = df["cedula"].astype(str)
+    df["nombre"] = df["nombre"].astype(str).replace(["nan", "NaT", "None"], "")
     df["monto"] = pd.to_numeric(df["monto"], errors="coerce").fillna(0)
+    df["tipo_cobro"] = df["tipo_cobro"].astype(str).replace(["nan", "NaT", "None"], "")
     return df
 
 
@@ -34,7 +36,6 @@ def _load_pagos_full():
 
     df = pd.read_excel(PAGOS_XLSX)
 
-    # Compatibilidad si alguna vez guardaste como "monto"
     if "monto" in df.columns and "valor" not in df.columns:
         df.rename(columns={"monto": "valor"}, inplace=True)
 
@@ -50,19 +51,7 @@ def _load_pagos_full():
     return df
 
 
-@router.get("/dashboard", response_class=HTMLResponse)
-def dashboard(request: Request):
-    user = require_user(request)
-    if isinstance(user, RedirectResponse):
-        return user
-
-    clientes = _load_clientes()
-    pagos = _load_pagos_full()
-
-    total_clientes = int(len(clientes))
-    total_prestado = float(clientes["monto"].sum()) if not clientes.empty else 0.0
-
-    # Sumar pagos por cédula
+def _compute_saldos(clientes: pd.DataFrame, pagos: pd.DataFrame) -> pd.DataFrame:
     pagos_sum = pagos.groupby("cedula", as_index=False)["valor"].sum()
     pagos_sum.rename(columns={"valor": "pagado"}, inplace=True)
 
@@ -73,32 +62,97 @@ def dashboard(request: Request):
         df["pagado"] = df["pagado"].fillna(0)
         df["saldo"] = df["monto"] - df["pagado"]
 
+    return df
+
+
+@router.get("/dashboard", response_class=HTMLResponse)
+def dashboard(request: Request):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    q = (request.query_params.get("q") or "").strip()
+
+    clientes = _load_clientes()
+    pagos = _load_pagos_full()
+
+    df = _compute_saldos(clientes, pagos)
+
+    total_clientes = int(len(clientes))
+    total_prestado = float(clientes["monto"].sum()) if not clientes.empty else 0.0
     total_pagado = float(df["pagado"].sum()) if not df.empty else 0.0
     total_saldo = float(df["saldo"].sum()) if not df.empty else 0.0
 
-    # Top 10 con más saldo
+    # Top saldos
     top_saldos = df.sort_values(by="saldo", ascending=False).head(10).to_dict(orient="records")
 
-    # Últimos 10 pagos (por fecha, si se puede; si no, deja el orden actual)
+    # Últimos pagos
     pagos_recent = pagos.copy()
     try:
         pagos_recent["_fecha_dt"] = pd.to_datetime(pagos_recent["fecha"], errors="coerce")
         pagos_recent = pagos_recent.sort_values(by="_fecha_dt", ascending=False).drop(columns=["_fecha_dt"])
     except Exception:
         pass
-
     ultimos_pagos = pagos_recent.head(10).to_dict(orient="records")
+
+    # ==========================
+    # BUSCADOR DE CLIENTE
+    # ==========================
+    cliente_sel = None
+    pagos_cliente = []
+    resumen_cliente = None
+
+    if q:
+        q_low = q.lower()
+
+        # Buscar en clientes por cédula exacta o por nombre contiene
+        candidatos = clientes[
+            (clientes["cedula"].astype(str) == q) |
+            (clientes["nombre"].astype(str).str.lower().str.contains(q_low, na=False))
+        ]
+
+        if not candidatos.empty:
+            cliente_sel = candidatos.iloc[0].to_dict()
+            cedula_sel = str(cliente_sel.get("cedula", ""))
+
+            # Resumen saldo cliente
+            row = df[df["cedula"].astype(str) == cedula_sel]
+            if not row.empty:
+                r = row.iloc[0]
+                resumen_cliente = {
+                    "nombre": r.get("nombre", ""),
+                    "cedula": r.get("cedula", ""),
+                    "monto": float(r.get("monto", 0)),
+                    "pagado": float(r.get("pagado", 0)),
+                    "saldo": float(r.get("saldo", 0)),
+                    "tipo_cobro": r.get("tipo_cobro", ""),
+                }
+
+            # Pagos del cliente
+            pagos_c = pagos[pagos["cedula"].astype(str) == cedula_sel].copy()
+            try:
+                pagos_c["_fecha_dt"] = pd.to_datetime(pagos_c["fecha"], errors="coerce")
+                pagos_c = pagos_c.sort_values(by="_fecha_dt", ascending=False).drop(columns=["_fecha_dt"])
+            except Exception:
+                pass
+            pagos_cliente = pagos_c.to_dict(orient="records")
 
     return templates.TemplateResponse(
         "dashboard.html",
         {
             "request": request,
             "user": user,
+            "q": q,
+
             "total_clientes": total_clientes,
             "total_prestado": total_prestado,
             "total_pagado": total_pagado,
             "total_saldo": total_saldo,
+
             "top_saldos": top_saldos,
             "ultimos_pagos": ultimos_pagos,
+
+            "resumen_cliente": resumen_cliente,
+            "pagos_cliente": pagos_cliente,
         }
     )
