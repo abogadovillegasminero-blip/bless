@@ -1,6 +1,8 @@
 import os
+from datetime import datetime
+
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
@@ -12,7 +14,11 @@ from app.saldos import router as saldos_router
 from app.reportes import router as reportes_router
 from app.admin_users import router as admin_users_router
 
+from app.exporter import export_all_tables_to_excel_bytes  # ✅ NUEVO
+
+
 app = FastAPI()
+
 
 @app.on_event("startup")
 def startup_event():
@@ -22,13 +28,36 @@ def startup_event():
         os.getenv("ADMIN_PASS", "admin123")
     )
 
+
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     error = request.query_params.get("error")
     return templates.TemplateResponse("login.html", {"request": request, "error": error})
+
+
+# ✅ NUEVO: Exportar TODA la BD a Excel (1 hoja por tabla)
+# Solo admin
+@app.get("/admin/reportes/exportar-todo")
+def exportar_todo(request: Request):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    if user.get("role") != "admin":
+        return HTMLResponse("<h3>No autorizado</h3>", status_code=403)
+
+    content = export_all_tables_to_excel_bytes()
+    filename = f"backup_bd_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
@@ -42,6 +71,15 @@ def home(request: Request):
     <html>
     <head>
         <title>Bless</title>
+
+        <!-- ✅ PWA (modo app en el celular) -->
+        <link rel="manifest" href="/static/manifest.json">
+        <script>
+          if ("serviceWorker" in navigator) {{
+            navigator.serviceWorker.register("/static/sw.js");
+          }}
+        </script>
+
         <style>
             body {{
                 font-family: 'Segoe UI', Arial, sans-serif;
@@ -113,11 +151,14 @@ def home(request: Request):
             {"<a class='admin' href='/reportes'>📈 Reportes</a>" if es_admin else ""}
             {"<a class='admin' href='/admin/usuarios'>👤 Usuarios</a>" if es_admin else ""}
 
+            {"<a class='admin' href='/admin/reportes/exportar-todo'>⬇️ Exportar TODO (Excel)</a>" if es_admin else ""}
+
             <a class="logout" href="/logout">🔒 Cerrar sesión</a>
         </div>
     </body>
     </html>
     """
+
 
 app.include_router(auth_router)
 app.include_router(clientes_router)
