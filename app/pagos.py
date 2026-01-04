@@ -34,7 +34,6 @@ def _load_pagos():
         return pd.DataFrame(columns=["cedula", "cliente", "fecha", "valor", "tipo_cobro"])
     df = pd.read_excel(PAGOS)
 
-    # compatibilidad por si antes guardaste como "monto"
     if "monto" in df.columns and "valor" not in df.columns:
         df.rename(columns={"monto": "valor"}, inplace=True)
 
