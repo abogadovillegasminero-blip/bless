@@ -1,84 +1,97 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Admin - Usuarios</title>
-</head>
-<body style="font-family: Arial; background:#f4f6f8; padding:24px;">
+{% extends "base.html" %}
+{% block content %}
 
-  <div style="max-width: 760px; margin:auto; background:white; padding:18px; border-radius:12px; box-shadow: 0 8px 20px rgba(0,0,0,0.08);">
-    <h2 style="margin-top:0;">👤 Administración de Usuarios</h2>
-    <div style="color:#555; margin-bottom:12px;">
-      Sesión: <b>{{ user.username }}</b> ({{ user.role }})
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="m-0">👤 Administración de Usuarios</h2>
+  <a class="btn btn-secondary btn-sm" href="/dashboard">⬅ Volver</a>
+</div>
+
+{% if ok %}
+  <div class="alert alert-success">✅ Acción realizada correctamente.</div>
+{% endif %}
+{% if err %}
+  <div class="alert alert-danger">❌ No se pudo completar la acción (datos inválidos o acción bloqueada).</div>
+{% endif %}
+
+<div class="card p-3 mb-4">
+  <h5 class="mb-3">➕ Crear usuario</h5>
+  <form method="post" action="/admin/usuarios/crear" class="row g-3">
+    <div class="col-md-4">
+      <label class="form-label">Usuario</label>
+      <input name="username" class="form-control" required>
     </div>
 
-    {% if ok %}
-      <div style="background:#e7fff0; border:1px solid #a6f0c0; color:#126b2f; padding:10px 12px; border-radius:10px; margin-bottom:12px;">
-        ✅ Usuario creado correctamente.
-      </div>
-    {% endif %}
+    <div class="col-md-4">
+      <label class="form-label">Contraseña</label>
+      <input name="password" type="password" class="form-control" required>
+    </div>
 
-    {% if error == "exists" %}
-      <div style="background:#ffe2e2; border:1px solid #ffb3b3; color:#8a1f1f; padding:10px 12px; border-radius:10px; margin-bottom:12px;">
-        ❌ Ya existe un usuario con ese nombre.
-      </div>
-    {% elif error == "missing" %}
-      <div style="background:#ffe2e2; border:1px solid #ffb3b3; color:#8a1f1f; padding:10px 12px; border-radius:10px; margin-bottom:12px;">
-        ❌ Debes escribir usuario y contraseña.
-      </div>
-    {% elif error == "role" %}
-      <div style="background:#ffe2e2; border:1px solid #ffb3b3; color:#8a1f1f; padding:10px 12px; border-radius:10px; margin-bottom:12px;">
-        ❌ Rol inválido. Solo se permite admin o user.
-      </div>
-    {% endif %}
+    <div class="col-md-2">
+      <label class="form-label">Rol</label>
+      <select name="role" class="form-control">
+        <option value="user">User</option>
+        <option value="admin">Admin</option>
+      </select>
+    </div>
 
-    <form method="post" action="/admin/usuarios/crear" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:18px;">
-      <div>
-        <label><b>Usuario</b></label><br>
-        <input name="username" required style="padding:8px; border-radius:8px; border:1px solid #ddd;">
-      </div>
+    <div class="col-md-2 d-flex align-items-end">
+      <button class="btn btn-primary w-100">Crear</button>
+    </div>
+  </form>
+</div>
 
-      <div>
-        <label><b>Contraseña</b></label><br>
-        <input type="password" name="password" required style="padding:8px; border-radius:8px; border:1px solid #ddd;">
-      </div>
+<div class="card p-3">
+  <h5 class="mb-3">📋 Usuarios</h5>
 
-      <div>
-        <label><b>Rol</b></label><br>
-        <select name="role" required style="padding:8px; border-radius:8px; border:1px solid #ddd;">
-          <option value="user">user</option>
-          <option value="admin">admin</option>
-        </select>
-      </div>
+  <div class="table-responsive">
+    <table class="table table-bordered bg-white m-0">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Usuario</th>
+          <th>Rol</th>
+          <th style="width: 340px;">Acciones</th>
+        </tr>
+      </thead>
 
-      <button type="submit" style="padding:10px 14px; border:0; border-radius:10px; background:#2c7be5; color:white; font-weight:bold; cursor:pointer;">
-        Crear usuario
-      </button>
-    </form>
+      <tbody>
+        {% if users|length == 0 %}
+          <tr><td colspan="4" class="text-center">No hay usuarios</td></tr>
+        {% endif %}
 
-    <h3 style="margin: 0 0 10px 0;">📋 Usuarios actuales</h3>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.id }}</td>
+          <td><b>{{ u.username }}</b></td>
+          <td>
+            {% if u.role == "admin" %}
+              <span class="badge bg-dark">ADMIN</span>
+            {% else %}
+              <span class="badge bg-secondary">USER</span>
+            {% endif %}
+          </td>
 
-    <table style="width:100%; border-collapse:collapse; background:white;">
-      <tr style="background:#222; color:white;">
-        <th style="padding:10px; text-align:left;">Usuario</th>
-        <th style="padding:10px; text-align:left;">Rol</th>
-      </tr>
-      {% for u in usuarios %}
-      <tr style="border-bottom:1px solid #eee;">
-        <td style="padding:10px;">{{ u.username }}</td>
-        <td style="padding:10px;"><b>{{ u.role }}</b></td>
-      </tr>
-      {% endfor %}
+          <td class="d-flex gap-2">
+            <form method="post" action="/admin/usuarios/cambiar_rol" class="d-flex gap-2 w-100">
+              <input type="hidden" name="user_id" value="{{ u.id }}">
+              <select name="role" class="form-control form-control-sm">
+                <option value="user" {% if u.role == "user" %}selected{% endif %}>user</option>
+                <option value="admin" {% if u.role == "admin" %}selected{% endif %}>admin</option>
+              </select>
+              <button class="btn btn-warning btn-sm" onclick="return confirm('¿Cambiar rol?');">Cambiar</button>
+            </form>
+
+            <form method="post" action="/admin/usuarios/eliminar" class="w-100"
+                  onsubmit="return confirm('¿Eliminar este usuario?');">
+              <input type="hidden" name="user_id" value="{{ u.id }}">
+              <button class="btn btn-danger btn-sm w-100">Eliminar</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
     </table>
-
-    <div style="margin-top:16px;">
-      <a href="/" style="display:inline-block; padding:10px 14px; background:#6c757d; color:white; text-decoration:none; border-radius:10px; font-weight:bold;">
-        ⬅ Volver
-      </a>
-      <a href="/logout" style="display:inline-block; padding:10px 14px; background:#dc3545; color:white; text-decoration:none; border-radius:10px; font-weight:bold; margin-left:8px;">
-        🔒 Cerrar sesión
-      </a>
-    </div>
   </div>
+</div>
 
-</body>
-</html>
+{% endblock %}
