@@ -31,18 +31,21 @@ def export_all_tables_to_excel_bytes() -> bytes:
     try:
         tables = _list_tables(conn)
         output = BytesIO()
+
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
             for t in tables:
+                sheet = (t[:31] if t else "tabla")  # Excel máximo 31 chars
+
+                # lee tabla completa
                 try:
                     df = pd.read_sql_query(f'SELECT * FROM "{t}"', conn)
                 except Exception:
-                    # por si el driver no acepta comillas dobles
                     df = pd.read_sql_query(f"SELECT * FROM {t}", conn)
 
-                sheet = (t[:31] if t else "tabla")  # Excel limita 31 chars
                 if df.empty:
-                    # hoja vacía pero creada
-                    pd.DataFrame({"info": [f"Tabla '{t}' está vacía"]}).to_excel(writer, index=False, sheet_name=sheet)
+                    pd.DataFrame({"info": [f"Tabla '{t}' está vacía"]}).to_excel(
+                        writer, index=False, sheet_name=sheet
+                    )
                 else:
                     df.to_excel(writer, index=False, sheet_name=sheet)
 
