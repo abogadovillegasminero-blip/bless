@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="row justify-content-center">
+  <div class="col-md-6 col-lg-5">
+
+    <div class="card p-4">
+      <h3 class="text-center mb-2">💰 BLESS</h3>
+      <div class="text-center text-muted mb-3">
+        Usuario: <b>{{ user.username }}</b>
+      </div>
+
+      <div class="d-grid gap-2">
+        <a href="/clientes" class="btn btn-primary">👥 Clientes</a>
+        <a href="/pagos" class="btn btn-primary">💵 Pagos</a>
+        <a href="/saldos" class="btn btn-primary">📊 Saldos</a>
+
+        {% if user.role == "admin" %}
+          <a href="/reportes" class="btn btn-secondary">📈 Reportes</a>
+          <a href="/admin/usuarios" class="btn btn-secondary">👤 Usuarios</a>
+        {% endif %}
+
+        <a href="/logout" class="btn btn-danger">🔒 Cerrar sesión</a>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}
