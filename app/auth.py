@@ -73,7 +73,7 @@ def login(
 ):
     user = authenticate_user(username, password)
     if not user:
-        return RedirectResponse("/login", status_code=302)
+        return RedirectResponse("/login?error=1", status_code=302)
 
     token = jwt.encode(
         {
@@ -103,7 +103,7 @@ def login(
 def get_current_user(request: Request):
     token = request.cookies.get("token")
     if not token:
-        return RedirectResponse("/login", status_code=302)
+        return RedirectResponse("/login?error=1", status_code=302)
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -111,20 +111,20 @@ def get_current_user(request: Request):
         role = payload.get("role")
 
         if not username:
-            resp = RedirectResponse("/login", status_code=302)
+            resp = RedirectResponse("/login?error=1", status_code=302)
             resp.delete_cookie("token", path="/")
             return resp
 
         db_user = get_user_by_username(username)
         if not db_user:
-            resp = RedirectResponse("/login", status_code=302)
+            resp = RedirectResponse("/login?error=1", status_code=302)
             resp.delete_cookie("token", path="/")
             return resp
 
         return {"username": username, "role": role}
 
     except JWTError:
-        resp = RedirectResponse("/login", status_code=302)
+        resp = RedirectResponse("/login?error=1", status_code=302)
         resp.delete_cookie("token", path="/")
         return resp
 
