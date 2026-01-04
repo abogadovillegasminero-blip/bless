@@ -6,12 +6,21 @@
   <a class="btn btn-secondary btn-sm" href="/dashboard">⬅ Volver</a>
 </div>
 
+{% if total_alertas and total_alertas > 0 %}
+  <div class="alert alert-warning">
+    ⚠️ <b>{{ total_alertas }}</b> cliente(s) sin pago en el período (hoy/semana) y con saldo pendiente.
+  </div>
+{% else %}
+  <div class="alert alert-success">
+    ✅ Todos los clientes tienen pago en el período o no tienen saldo pendiente.
+  </div>
+{% endif %}
+
 <div class="alert alert-info">
   <b>Hoy:</b> {{ today }} |
   <b>Semana (desde lunes):</b> {{ week_start }} → {{ today }} <br>
   <small>
     Regla actual: <b>diario</b> = préstamo / 30 días, <b>semanal</b> = préstamo / 12 semanas.
-    (Luego lo hacemos configurable por cliente si quieres.)
   </small>
 </div>
 
@@ -19,6 +28,7 @@
   <table class="table table-bordered bg-white m-0">
     <thead>
       <tr>
+        <th>Estado</th>
         <th>Cliente</th>
         <th>Cédula</th>
         <th>Tipo</th>
@@ -32,11 +42,23 @@
     </thead>
     <tbody>
       {% if filas|length == 0 %}
-        <tr><td colspan="9" class="text-center">No hay clientes</td></tr>
+        <tr><td colspan="10" class="text-center">No hay clientes</td></tr>
       {% endif %}
 
       {% for r in filas %}
-      <tr>
+      <tr {% if r["alerta"] %}style="background:#fff3cd;"{% endif %}>
+        <td>
+          {% if r["saldo"]|float <= 0 %}
+            ✅ Al día
+          {% else %}
+            {% if r["alerta"] %}
+              ⚠️ Sin pago
+            {% else %}
+              ✅ Pagó
+            {% endif %}
+          {% endif %}
+        </td>
+
         <td>{{ r["nombre"] }}</td>
         <td>{{ r["cedula"] }}</td>
         <td><b>{{ r["tipo_cobro"] }}</b></td>
@@ -45,9 +67,7 @@
         <td>$ {{ "{:,.0f}".format(r["pagado_hoy"]|float).replace(",", ".") }}</td>
         <td>$ {{ "{:,.0f}".format(r["pagado_semana"]|float).replace(",", ".") }}</td>
 
-        <td>
-          <b>$ {{ "{:,.0f}".format(r["debe"]|float).replace(",", ".") }}</b>
-        </td>
+        <td><b>$ {{ "{:,.0f}".format(r["debe"]|float).replace(",", ".") }}</b></td>
 
         <td>$ {{ "{:,.0f}".format(r["saldo"]|float).replace(",", ".") }}</td>
 
