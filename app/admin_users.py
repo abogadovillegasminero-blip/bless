@@ -10,6 +10,7 @@ from app.security import hash_password
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
+# ✅ templates dentro de app/templates (ruta segura en Render)
 BASE_DIR = os.path.dirname(__file__)  # .../app
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))  # .../app/templates
 
@@ -51,6 +52,7 @@ def admin_users_page(request: Request):
 
     error = request.query_params.get("error")
     ok = request.query_params.get("ok")
+
     usuarios = list_users()
     admins_count = count_admins()
 
@@ -60,7 +62,7 @@ def admin_users_page(request: Request):
             "request": request,
             "user": user,
             "usuarios": usuarios,
-            "admins_count": admins_count,  # ✅ para deshabilitar último admin
+            "admins_count": admins_count,
             "error": error,
             "ok": ok,
         },
@@ -106,20 +108,17 @@ def crear_usuario(
 
 
 @router.post("/usuarios/cambiar_rol")
-def cambiar_rol(
-    request: Request,
-    username: str = Form(...),
-):
-    current_admin = require_admin(request)
-    if isinstance(current_admin, RedirectResponse):
-        return current_admin
+def cambiar_rol(request: Request, username: str = Form(...)):
+    admin = require_admin(request)
+    if isinstance(admin, RedirectResponse):
+        return admin
 
     username = (username or "").strip()
     if not username:
         return RedirectResponse("/admin/usuarios?error=missing", status_code=303)
 
     # 🔒 no cambiar tu propio rol
-    if username == current_admin.get("username"):
+    if username == admin.get("username"):
         return RedirectResponse("/admin/usuarios?error=self_role", status_code=303)
 
     target = get_user(username)
@@ -130,9 +129,8 @@ def cambiar_rol(
     new_role = "admin" if current_role == "user" else "user"
 
     # 🔒 no degradar al último admin
-    if current_role == "admin" and new_role == "user":
-        if count_admins() <= 1:
-            return RedirectResponse("/admin/usuarios?error=last_admin", status_code=303)
+    if current_role == "admin" and new_role == "user" and count_admins() <= 1:
+        return RedirectResponse("/admin/usuarios?error=last_admin", status_code=303)
 
     conn = get_connection()
     cur = conn.cursor()
@@ -144,22 +142,31 @@ def cambiar_rol(
 
 
 @router.post("/usuarios/eliminar")
-def eliminar_usuario(
-    request: Request,
-    username: str = Form(...),
-):
-    current_admin = require_admin(request)
-    if isinstance(current_admin, RedirectResponse):
-        return current_admin
+def eliminar_usuario(request: Request, username: str = Form(...)):
+    admin = require_admin(request)
+    if isinstance(admin, RedirectResponse):
+        return admin
 
     username = (username or "").strip()
     if not username:
         return RedirectResponse("/admin/usuarios?error=missing", status_code=303)
 
     # 🔒 no eliminarte tú mismo
-    if username == current_admin.get("username"):
+    if username == admin.get("username"):
         return RedirectResponse("/admin/usuarios?error=self_delete", status_code=303)
 
     target = get_user(username)
     if not target:
-        return RedirectRespon
+        return RedirectResponse("/admin/usuarios?error=notfound", status_code=303)
+
+    # 🔒 no eliminar al último admin
+    if target["role"] == "admin" and count_admins() <= 1:
+        return RedirectResponse("/admin/usuarios?error=last_admin", status_code=303)
+
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM usuarios WHERE username = ?", (username,))
+    conn.commit()
+    conn.close()
+
+    return RedirectResponse("/admin/usuarios?ok=deleted", status_code=303)
