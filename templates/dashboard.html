@@ -11,6 +11,73 @@
   </div>
 </div>
 
+<div class="card p-3 mb-3">
+  <form method="get" action="/dashboard" class="row g-2 align-items-center">
+    <div class="col-md-9">
+      <input class="form-control" name="q" value="{{ q }}" placeholder="Buscar cliente por cédula o nombre...">
+    </div>
+    <div class="col-md-3 d-grid">
+      <button class="btn btn-primary">Buscar</button>
+    </div>
+  </form>
+</div>
+
+{% if resumen_cliente %}
+<div class="card p-3 mb-3">
+  <h5 class="mb-2">🔎 Resultado</h5>
+
+  <div class="row g-3">
+    <div class="col-md-3">
+      <div class="text-muted">Cliente</div>
+      <div style="font-weight:800">{{ resumen_cliente.nombre }}</div>
+    </div>
+    <div class="col-md-3">
+      <div class="text-muted">Cédula</div>
+      <div style="font-weight:800">{{ resumen_cliente.cedula }}</div>
+    </div>
+    <div class="col-md-2">
+      <div class="text-muted">Préstamo</div>
+      <div style="font-weight:800">$ {{ "{:,.0f}".format(resumen_cliente.monto|float).replace(",", ".") }}</div>
+    </div>
+    <div class="col-md-2">
+      <div class="text-muted">Pagado</div>
+      <div style="font-weight:800">$ {{ "{:,.0f}".format(resumen_cliente.pagado|float).replace(",", ".") }}</div>
+    </div>
+    <div class="col-md-2">
+      <div class="text-muted">Saldo</div>
+      <div style="font-weight:800">$ {{ "{:,.0f}".format(resumen_cliente.saldo|float).replace(",", ".") }}</div>
+    </div>
+  </div>
+
+  <hr>
+
+  <h6 class="mb-2">Pagos del cliente</h6>
+
+  <table class="table table-bordered bg-white m-0">
+    <thead>
+      <tr>
+        <th>Fecha</th>
+        <th>Valor</th>
+        <th>Tipo cobro</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if pagos_cliente|length == 0 %}
+        <tr><td colspan="3" class="text-center">Este cliente no tiene pagos registrados</td></tr>
+      {% endif %}
+      {% for p in pagos_cliente %}
+      <tr>
+        <td>{{ p["fecha"] }}</td>
+        <td>$ {{ "{:,.0f}".format(p["valor"]|float).replace(",", ".") }}</td>
+        <td>{{ p["tipo_cobro"] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+</div>
+{% endif %}
+
 <div class="row g-3 mb-3">
   <div class="col-md-3">
     <div class="card p-3">
