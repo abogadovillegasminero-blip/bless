@@ -15,7 +15,6 @@ DATA_DIR = "data"
 CLIENTES_XLSX = f"{DATA_DIR}/clientes.xlsx"
 PAGOS_XLSX = f"{DATA_DIR}/pagos.xlsx"
 
-# ✅ Reglas simples (configurables)
 DAILY_TERM_DAYS = 30
 WEEKLY_TERM_WEEKS = 12
 
@@ -51,7 +50,6 @@ def _load_pagos():
 
     df = pd.read_excel(PAGOS_XLSX)
 
-    # compatibilidad si antes guardaste como "monto"
     if "monto" in df.columns and "valor" not in df.columns:
         df.rename(columns={"monto": "valor"}, inplace=True)
 
@@ -70,22 +68,18 @@ def _load_pagos():
         .str.strip()
     )
     df["valor"] = pd.to_numeric(df["valor"], errors="coerce").fillna(0)
-
-    # parse fecha a date para filtros
     df["_fecha_dt"] = pd.to_datetime(df["fecha"], errors="coerce").dt.date
 
     return df
 
 
 def _save_pagos(df: pd.DataFrame):
-    # quitar columna auxiliar antes de guardar
     if "_fecha_dt" in df.columns:
         df = df.drop(columns=["_fecha_dt"])
     df.to_excel(PAGOS_XLSX, index=False)
 
 
 def _start_of_week(d: date) -> date:
-    # lunes como inicio de semana
     return d - timedelta(days=d.weekday())
 
 
@@ -94,16 +88,16 @@ def pago_rapido(
     request: Request,
     cedula: str = Form(...),
     valor: float = Form(...),
-    fecha: str = Form(...),
 ):
     user = require_user(request)
     if isinstance(user, RedirectResponse):
         return user
 
     cedula = str(cedula).strip()
-    fecha = str(fecha).strip()
 
-    # validar cliente existe
+    # ✅ fecha automática (hoy)
+    fecha_hoy = date.today().isoformat()
+
     clientes = _load_clientes()
     match = clientes[clientes["cedula"].astype(str) == cedula]
     if match.empty:
@@ -112,17 +106,15 @@ def pago_rapido(
     cliente_nombre = str(match.iloc[0]["nombre"])
     tipo_cobro = str(match.iloc[0]["tipo_cobro"])
 
-    # guardar pago
     pagos_df = _load_pagos()
     nuevo = {
         "cedula": cedula,
         "cliente": cliente_nombre,
-        "fecha": fecha,
+        "fecha": fecha_hoy,
         "valor": float(valor),
         "tipo_cobro": tipo_cobro,
     }
 
-    # aseguramos que existan columnas mínimas (por compatibilidad)
     for col in ["cedula", "cliente", "fecha", "valor", "tipo_cobro"]:
         if col not in pagos_df.columns:
             pagos_df[col] = ""
@@ -145,14 +137,12 @@ def ver_cobros(request: Request):
     clientes = _load_clientes()
     pagos = _load_pagos()
 
-    # pagos hoy
     pagos_hoy = (
         pagos[pagos["_fecha_dt"] == today]
         .groupby("cedula", as_index=False)["valor"].sum()
         .rename(columns={"valor": "pagado_hoy"})
     )
 
-    # pagos semana actual
     pagos_semana = (
         pagos[
             (pagos["_fecha_dt"].notna())
@@ -163,7 +153,6 @@ def ver_cobros(request: Request):
         .rename(columns={"valor": "pagado_semana"})
     )
 
-    # pagos total
     pagos_total = (
         pagos.groupby("cedula", as_index=False)["valor"].sum()
         .rename(columns={"valor": "pagado_total"})
@@ -182,7 +171,6 @@ def ver_cobros(request: Request):
 
     df["saldo"] = (df["monto"] - df["pagado_total"]).clip(lower=0)
 
-    # cuota sugerida por tipo
     def cuota_sugerida(row):
         tipo = (row.get("tipo_cobro") or "").strip().lower()
         monto = float(row.get("monto") or 0)
@@ -195,7 +183,6 @@ def ver_cobros(request: Request):
 
     df["cuota_sugerida"] = df.apply(cuota_sugerida, axis=1)
 
-    # debe según tipo
     def debe(row):
         tipo = (row.get("tipo_cobro") or "").strip().lower()
         cuota = float(row.get("cuota_sugerida") or 0)
@@ -208,24 +195,19 @@ def ver_cobros(request: Request):
 
     df["debe"] = df.apply(debe, axis=1)
 
-    # alerta: saldo>0 y no pagó en el periodo
     def alerta(row):
         tipo = (row.get("tipo_cobro") or "").strip().lower()
         saldo = float(row.get("saldo") or 0)
-
         if saldo <= 0:
             return False
-
         if tipo == "diario":
             return float(row.get("pagado_hoy") or 0) <= 0
         if tipo == "semanal":
             return float(row.get("pagado_semana") or 0) <= 0
-
         return False
 
     df["alerta"] = df.apply(alerta, axis=1)
 
-    # ordenar: alertas primero
     df = df.sort_values(by=["alerta", "debe", "saldo"], ascending=[False, False, False])
 
     filas = df.to_dict(orient="records")
