@@ -10,7 +10,6 @@ from app.security import hash_password
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
-# ✅ apunte robusto al folder app/templates
 BASE_DIR = os.path.dirname(__file__)  # .../app
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))  # .../app/templates
 
@@ -53,6 +52,7 @@ def admin_users_page(request: Request):
     error = request.query_params.get("error")
     ok = request.query_params.get("ok")
     usuarios = list_users()
+    admins_count = count_admins()
 
     return templates.TemplateResponse(
         "admin_users.html",
@@ -60,6 +60,7 @@ def admin_users_page(request: Request):
             "request": request,
             "user": user,
             "usuarios": usuarios,
+            "admins_count": admins_count,  # ✅ para deshabilitar último admin
             "error": error,
             "ok": ok,
         },
@@ -117,7 +118,7 @@ def cambiar_rol(
     if not username:
         return RedirectResponse("/admin/usuarios?error=missing", status_code=303)
 
-    # 🔒 no cambiar tu propio rol (evita perder panel)
+    # 🔒 no cambiar tu propio rol
     if username == current_admin.get("username"):
         return RedirectResponse("/admin/usuarios?error=self_role", status_code=303)
 
@@ -128,7 +129,7 @@ def cambiar_rol(
     current_role = target["role"]
     new_role = "admin" if current_role == "user" else "user"
 
-    # 🔒 si estás intentando bajar a user y es el último admin, bloquea
+    # 🔒 no degradar al último admin
     if current_role == "admin" and new_role == "user":
         if count_admins() <= 1:
             return RedirectResponse("/admin/usuarios?error=last_admin", status_code=303)
@@ -161,16 +162,4 @@ def eliminar_usuario(
 
     target = get_user(username)
     if not target:
-        return RedirectResponse("/admin/usuarios?error=notfound", status_code=303)
-
-    # 🔒 no eliminar el último admin
-    if target["role"] == "admin" and count_admins() <= 1:
-        return RedirectResponse("/admin/usuarios?error=last_admin", status_code=303)
-
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM usuarios WHERE username = ?", (username,))
-    conn.commit()
-    conn.close()
-
-    return RedirectResponse("/admin/usuarios?ok=deleted", status_code=303)
+        return RedirectRespon
