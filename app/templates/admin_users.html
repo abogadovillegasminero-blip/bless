@@ -1,165 +1,67 @@
-import os
-import sqlite3
-from fastapi import APIRouter, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Admin - Usuarios</title>
+</head>
+<body style="font-family: Arial; background:#f4f6f8; padding:24px;">
+  <div style="max-width: 860px; margin:auto; background:white; padding:18px; border-radius:12px; box-shadow:0 10px 20px rgba(0,0,0,.08);">
+    <h2 style="margin-top:0;">👤 Administración de Usuarios</h2>
 
-from app.db import get_connection
-from app.auth import require_admin
-from app.security import hash_password
+    <div style="color:#555; margin-bottom:12px;">
+      Sesión: <b>{{ user.username }}</b> ({{ user.role }})
+    </div>
 
-router = APIRouter(prefix="/admin", tags=["Admin"])
+    {% if ok == "created" %}
+      <div style="background:#e8fff0; border:1px solid #b7f0c5; color:#126b2f; padding:10px 12px; border-radius:10px; margin-bottom:12px;">
+        ✅ Usuario creado correctamente.
+      </div>
+    {% elif ok == "role" %}
+      <div style="background:#e8f3ff; border:1px solid #b8d9ff; color:#0c3e7a; padding:10px 12px; border-radius:10px; margin-bottom:12px;">
+        ✅ Rol actualizado correctamente.
+      </div>
+    {% elif ok == "deleted" %}
+      <div style="background:#fff3e6; border:1px solid #ffd6a6; color:#7a3b00; padding:10px 12px; border-radius:10px; margin-bottom:12px;">
+        ✅ Usuario eliminado correctamente.
+      </div>
+    {% endif %}
 
-BASE_DIR = os.path.dirname(__file__)  # .../app
-templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))  # .../app/templates
+    {% if error == "exists" %}
+      <div style="background:#ffe2e2; border:1px solid #ffb3b3; color:#8a1f1f; padding:10px 12px; border-radius:10px; margin-bottom:12px;">
+        ❌ Ya existe un usuario con ese nombre.
+      </div>
+    {% elif error == "missing" %}
+      <div style="background:#ffe2e2; border:1px solid #ffb3b3; color:#8a1f1f; padding:10px 12px; border-radius:10px; margin-bottom:12px;">
+        ❌ Faltan datos.
+      </div>
+    {% elif error == "role" %}
+      <div style="background:#ffe2e2; border:1px solid #ffb3b3; color:#8a1f1f; padding:10px 12px; border-radius:10px; margin-bottom:12px;">
+        ❌ Rol inválido.
+      </div>
+    {% elif error == "notfound" %}
+      <div style="background:#ffe2e2; border:1px solid #ffb3b3; color:#8a1f1f; padding:10px 12px; border-radius:10px; margin-bottom:12px;">
+        ❌ Usuario no encontrado.
+      </div>
+    {% elif error == "self_delete" %}
+      <div style="background:#ffe2e2; border:1px solid #ffb3b3; color:#8a1f1f; padding:10px 12px; border-radius:10px; margin-bottom:12px;">
+        ❌ No puedes eliminar tu propio usuario.
+      </div>
+    {% elif error == "self_role" %}
+      <div style="background:#ffe2e2; border:1px solid #ffb3b3; color:#8a1f1f; padding:10px 12px; border-radius:10px; margin-bottom:12px;">
+        ❌ No puedes cambiar tu propio rol (seguridad).
+      </div>
+    {% elif error == "last_admin" %}
+      <div style="background:#ffe2e2; border:1px solid #ffb3b3; color:#8a1f1f; padding:10px 12px; border-radius:10px; margin-bottom:12px;">
+        ❌ No se puede eliminar ni degradar al último administrador.
+      </div>
+    {% endif %}
 
-
-def list_users():
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT id, username, role FROM usuarios ORDER BY role DESC, username ASC")
-    rows = cur.fetchall()
-    conn.close()
-    return [{"id": r[0], "username": r[1], "role": r[2]} for r in rows]
-
-
-def count_admins():
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM usuarios WHERE role = 'admin'")
-    n = cur.fetchone()[0]
-    conn.close()
-    return int(n)
-
-
-def get_user(username: str):
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT id, username, role FROM usuarios WHERE username = ?", (username,))
-    row = cur.fetchone()
-    conn.close()
-    if not row:
-        return None
-    return {"id": row[0], "username": row[1], "role": row[2]}
-
-
-@router.get("/usuarios", response_class=HTMLResponse)
-def admin_users_page(request: Request):
-    user = require_admin(request)
-    if isinstance(user, RedirectResponse):
-        return user
-
-    error = request.query_params.get("error")
-    ok = request.query_params.get("ok")
-    usuarios = list_users()
-    admins_count = count_admins()
-
-    return templates.TemplateResponse(
-        "admin_users.html",
-        {
-            "request": request,
-            "user": user,
-            "usuarios": usuarios,
-            "admins_count": admins_count,  # ✅ para deshabilitar último admin
-            "error": error,
-            "ok": ok,
-        },
-    )
-
-
-@router.post("/usuarios/crear")
-def crear_usuario(
-    request: Request,
-    username: str = Form(...),
-    password: str = Form(...),
-    role: str = Form(...),
-):
-    user = require_admin(request)
-    if isinstance(user, RedirectResponse):
-        return user
-
-    username = (username or "").strip()
-    role = (role or "").strip().lower()
-
-    if not username or not password:
-        return RedirectResponse("/admin/usuarios?error=missing", status_code=303)
-
-    if role not in ("admin", "user"):
-        return RedirectResponse("/admin/usuarios?error=role", status_code=303)
-
-    hashed = hash_password(password)
-
-    conn = get_connection()
-    cur = conn.cursor()
-    try:
-        cur.execute(
-            "INSERT INTO usuarios (username, password, role) VALUES (?, ?, ?)",
-            (username, hashed, role),
-        )
-        conn.commit()
-    except sqlite3.IntegrityError:
-        conn.close()
-        return RedirectResponse("/admin/usuarios?error=exists", status_code=303)
-
-    conn.close()
-    return RedirectResponse("/admin/usuarios?ok=created", status_code=303)
-
-
-@router.post("/usuarios/cambiar_rol")
-def cambiar_rol(
-    request: Request,
-    username: str = Form(...),
-):
-    current_admin = require_admin(request)
-    if isinstance(current_admin, RedirectResponse):
-        return current_admin
-
-    username = (username or "").strip()
-    if not username:
-        return RedirectResponse("/admin/usuarios?error=missing", status_code=303)
-
-    # 🔒 no cambiar tu propio rol
-    if username == current_admin.get("username"):
-        return RedirectResponse("/admin/usuarios?error=self_role", status_code=303)
-
-    target = get_user(username)
-    if not target:
-        return RedirectResponse("/admin/usuarios?error=notfound", status_code=303)
-
-    current_role = target["role"]
-    new_role = "admin" if current_role == "user" else "user"
-
-    # 🔒 no degradar al último admin
-    if current_role == "admin" and new_role == "user":
-        if count_admins() <= 1:
-            return RedirectResponse("/admin/usuarios?error=last_admin", status_code=303)
-
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("UPDATE usuarios SET role = ? WHERE username = ?", (new_role, username))
-    conn.commit()
-    conn.close()
-
-    return RedirectResponse("/admin/usuarios?ok=role", status_code=303)
-
-
-@router.post("/usuarios/eliminar")
-def eliminar_usuario(
-    request: Request,
-    username: str = Form(...),
-):
-    current_admin = require_admin(request)
-    if isinstance(current_admin, RedirectResponse):
-        return current_admin
-
-    username = (username or "").strip()
-    if not username:
-        return RedirectResponse("/admin/usuarios?error=missing", status_code=303)
-
-    # 🔒 no eliminarte tú mismo
-    if username == current_admin.get("username"):
-        return RedirectResponse("/admin/usuarios?error=self_delete", status_code=303)
-
-    target = get_user(username)
-    if not target:
-        return RedirectRespon
+    <h3 style="margin-bottom:10px;">➕ Crear usuario</h3>
+    <form method="post" action="/admin/usuarios/crear" style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px;">
+      <input name="username" placeholder="Usuario" required style="padding:10px; border-radius:8px; border:1px solid #ddd; flex:1; min-width:180px;">
+      <input type="password" name="password" placeholder="Contraseña" required style="padding:10px; border-radius:8px; border:1px solid #ddd; flex:1; min-width:180px;">
+      <select name="role" required style="padding:10px; border-radius:8px; border:1px solid #ddd;">
+        <option value="user">user</option>
+        <option value="admin">admin</option>
+      </select>
+      <button type="submit" style="padding:10px 14px; border:none; border-radius:8px; b
