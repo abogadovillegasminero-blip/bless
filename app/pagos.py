@@ -75,8 +75,8 @@ def pagos_form(request: Request):
 
     pagos_df = _load_pagos()
 
-    # ✅ filtros por querystring
-    solo_hoy = request.query_params.get("hoy")  # "1" si aplica
+    # filtros por querystring
+    solo_hoy = request.query_params.get("hoy")  # "1"
     cedula_filtro = (request.query_params.get("cedula") or "").strip()
 
     hoy_str = date.today().isoformat()
@@ -162,4 +162,54 @@ def eliminar_pago(
     pagos_df = pagos_df.drop(index=row_id).reset_index(drop=True)
     pagos_df.to_excel(PAGOS, index=False)
 
+    return RedirectResponse("/pagos", status_code=303)
+
+
+# =========================
+# EDITAR PAGO (GET)
+# =========================
+@router.get("/pagos/editar/{row_id}", response_class=HTMLResponse)
+def editar_pago(request: Request, row_id: int):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    pagos_df = _load_pagos()
+
+    if row_id < 0 or row_id >= len(pagos_df):
+        return RedirectResponse("/pagos", status_code=303)
+
+    row = pagos_df.iloc[row_id].to_dict()
+    row["row_id"] = row_id
+
+    return templates.TemplateResponse(
+        "pago_editar.html",
+        {"request": request, "pago": row, "user": user}
+    )
+
+
+# =========================
+# ACTUALIZAR PAGO (POST)
+# =========================
+@router.post("/pagos/actualizar")
+def actualizar_pago(
+    request: Request,
+    row_id: int = Form(...),
+    valor: float = Form(...),
+    fecha: str = Form(...),
+):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    pagos_df = _load_pagos()
+
+    if row_id < 0 or row_id >= len(pagos_df):
+        return RedirectResponse("/pagos", status_code=303)
+
+    # Solo actualiza campos permitidos
+    pagos_df.at[row_id, "valor"] = float(valor)
+    pagos_df.at[row_id, "fecha"] = str(fecha)
+
+    pagos_df.to_excel(PAGOS, index=False)
     return RedirectResponse("/pagos", status_code=303)
