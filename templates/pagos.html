@@ -37,7 +37,7 @@
       <th>Fecha</th>
       <th>Valor</th>
       <th>Tipo cobro</th>
-      <th>Acciones</th>
+      <th style="width:160px;">Acciones</th>
     </tr>
   </thead>
   <tbody>
@@ -48,9 +48,9 @@
       <td>{{ p["fecha"] }}</td>
       <td>{{ p["valor"] }}</td>
       <td>{{ p["tipo_cobro"] }}</td>
-      <td style="width:140px;">
+      <td>
         <form method="post" action="/pagos/eliminar" onsubmit="return confirm('¿Eliminar este pago?');">
-          <input type="hidden" name="row_id" value="{{ loop.index0 }}">
+          <input type="hidden" name="pago_id" value="{{ p['id'] }}">
           <button class="btn btn-danger btn-sm w-100">Eliminar</button>
         </form>
       </td>
