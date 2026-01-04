@@ -8,7 +8,7 @@
 
 <div class="card p-3">
   <form method="post" action="/clientes/actualizar" onsubmit="return confirm('¿Guardar cambios del cliente?');">
-    <input type="hidden" name="row_id" value="{{ cliente.row_id }}">
+    <input type="hidden" name="cliente_id" value="{{ cliente.id }}">
 
     <div class="row g-3">
       <div class="col-md-4">
@@ -19,7 +19,6 @@
       <div class="col-md-3">
         <label class="form-label">Cédula</label>
         <input name="cedula" class="form-control" required value="{{ cliente.cedula }}">
-        <div class="form-text">Si cambias la cédula, no puede duplicar otra existente.</div>
       </div>
 
       <div class="col-md-3">
@@ -35,7 +34,6 @@
       <div class="col-md-3">
         <label class="form-label">Tipo de cobro</label>
         <select name="tipo_cobro" class="form-control" required>
-          <option value="">Seleccione</option>
           <option value="diario" {% if cliente.tipo_cobro == "diario" %}selected{% endif %}>Diario</option>
           <option value="semanal" {% if cliente.tipo_cobro == "semanal" %}selected{% endif %}>Semanal</option>
         </select>
