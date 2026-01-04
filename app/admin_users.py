@@ -1,172 +1,102 @@
-import os
-import sqlite3
-from fastapi import APIRouter, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+{% extends "base.html" %}
+{% block content %}
 
-from app.db import get_connection
-from app.auth import require_admin
-from app.security import hash_password
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="m-0">📈 Reportes</h2>
+  <a class="btn btn-secondary btn-sm" href="/dashboard">⬅ Volver</a>
+</div>
 
-router = APIRouter(prefix="/admin", tags=["Admin"])
+{% if request.query_params.get("error") %}
+  <div class="alert alert-danger">No hay datos para exportar con esos filtros.</div>
+{% endif %}
 
-# ✅ templates dentro de app/templates (ruta segura en Render)
-BASE_DIR = os.path.dirname(__file__)  # .../app
-templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))  # .../app/templates
+<div class="card p-3 mb-3">
+  <form method="get" action="/reportes" class="row g-3 align-items-end">
+    <div class="col-md-2">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" value="1" id="hoy" name="hoy" {% if hoy == "1" %}checked{% endif %}>
+        <label class="form-check-label" for="hoy">Solo hoy</label>
+      </div>
+    </div>
 
+    <div class="col-md-3">
+      <label class="form-label">Desde</label>
+      <input type="date" class="form-control" name="desde" value="{{ desde }}">
+    </div>
 
-def list_users():
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT id, username, role FROM usuarios ORDER BY role DESC, username ASC")
-    rows = cur.fetchall()
-    conn.close()
-    return [{"id": r[0], "username": r[1], "role": r[2]} for r in rows]
+    <div class="col-md-3">
+      <label class="form-label">Hasta</label>
+      <input type="date" class="form-control" name="hasta" value="{{ hasta }}">
+    </div>
 
+    <div class="col-md-2">
+      <label class="form-label">Cédula</label>
+      <input class="form-control" name="cedula" placeholder="Filtrar" value="{{ cedula }}">
+    </div>
 
-def count_admins():
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM usuarios WHERE role = 'admin'")
-    n = cur.fetchone()[0]
-    conn.close()
-    return int(n)
+    <div class="col-md-2 d-flex gap-2">
+      <button class="btn btn-primary w-100">Aplicar</button>
+      <a class="btn btn-outline-secondary w-100" href="/reportes">Limpiar</a>
+    </div>
+  </form>
+</div>
 
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="card p-3">
+      <div class="text-muted">Cantidad de pagos</div>
+      <div class="fs-4 fw-bold">{{ cantidad }}</div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card p-3">
+      <div class="text-muted">Total (suma de pagos)</div>
+      <div class="fs-4 fw-bold">$ {{ "{:,.0f}".format(total|float).replace(",", ".") }}</div>
+    </div>
+  </div>
+</div>
 
-def get_user(username: str):
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT id, username, role FROM usuarios WHERE username = ?", (username,))
-    row = cur.fetchone()
-    conn.close()
-    if not row:
-        return None
-    return {"id": row[0], "username": row[1], "role": row[2]}
+<div class="d-flex gap-2 mb-3">
+  <a class="btn btn-success"
+     href="/reportes/exportar?hoy={{ hoy }}&desde={{ desde }}&hasta={{ hasta }}&cedula={{ cedula }}">
+    📤 Exportar Excel (con filtros)
+  </a>
+</div>
 
+<div class="card p-3">
+  <div class="table-responsive">
+    <table class="table table-bordered bg-white m-0">
+      <thead>
+        <tr>
+          <th>Cliente</th>
+          <th>Cédula</th>
+          <th>Fecha</th>
+          <th>Hora</th>
+          <th>Valor</th>
+          <th>Tipo</th>
+          <th>Registrado por</th>
+        </tr>
+      </thead>
 
-@router.get("/usuarios", response_class=HTMLResponse)
-def admin_users_page(request: Request):
-    user = require_admin(request)
-    if isinstance(user, RedirectResponse):
-        return user
+      <tbody>
+        {% if pagos|length == 0 %}
+          <tr><td colspan="7" class="text-center">No hay pagos con esos filtros</td></tr>
+        {% endif %}
 
-    error = request.query_params.get("error")
-    ok = request.query_params.get("ok")
+        {% for p in pagos %}
+        <tr>
+          <td>{{ p["cliente"] }}</td>
+          <td>{{ p["cedula"] }}</td>
+          <td>{{ p["fecha"] }}</td>
+          <td>{{ p.get("hora","") }}</td>
+          <td>$ {{ "{:,.0f}".format(p["valor"]|float).replace(",", ".") }}</td>
+          <td>{{ p["tipo_cobro"] }}</td>
+          <td>{{ p.get("registrado_por","") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
 
-    usuarios = list_users()
-    admins_count = count_admins()
-
-    return templates.TemplateResponse(
-        "admin_users.html",
-        {
-            "request": request,
-            "user": user,
-            "usuarios": usuarios,
-            "admins_count": admins_count,
-            "error": error,
-            "ok": ok,
-        },
-    )
-
-
-@router.post("/usuarios/crear")
-def crear_usuario(
-    request: Request,
-    username: str = Form(...),
-    password: str = Form(...),
-    role: str = Form(...),
-):
-    user = require_admin(request)
-    if isinstance(user, RedirectResponse):
-        return user
-
-    username = (username or "").strip()
-    role = (role or "").strip().lower()
-
-    if not username or not password:
-        return RedirectResponse("/admin/usuarios?error=missing", status_code=303)
-
-    if role not in ("admin", "user"):
-        return RedirectResponse("/admin/usuarios?error=role", status_code=303)
-
-    hashed = hash_password(password)
-
-    conn = get_connection()
-    cur = conn.cursor()
-    try:
-        cur.execute(
-            "INSERT INTO usuarios (username, password, role) VALUES (?, ?, ?)",
-            (username, hashed, role),
-        )
-        conn.commit()
-    except sqlite3.IntegrityError:
-        conn.close()
-        return RedirectResponse("/admin/usuarios?error=exists", status_code=303)
-
-    conn.close()
-    return RedirectResponse("/admin/usuarios?ok=created", status_code=303)
-
-
-@router.post("/usuarios/cambiar_rol")
-def cambiar_rol(request: Request, username: str = Form(...)):
-    admin = require_admin(request)
-    if isinstance(admin, RedirectResponse):
-        return admin
-
-    username = (username or "").strip()
-    if not username:
-        return RedirectResponse("/admin/usuarios?error=missing", status_code=303)
-
-    # 🔒 no cambiar tu propio rol
-    if username == admin.get("username"):
-        return RedirectResponse("/admin/usuarios?error=self_role", status_code=303)
-
-    target = get_user(username)
-    if not target:
-        return RedirectResponse("/admin/usuarios?error=notfound", status_code=303)
-
-    current_role = target["role"]
-    new_role = "admin" if current_role == "user" else "user"
-
-    # 🔒 no degradar al último admin
-    if current_role == "admin" and new_role == "user" and count_admins() <= 1:
-        return RedirectResponse("/admin/usuarios?error=last_admin", status_code=303)
-
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("UPDATE usuarios SET role = ? WHERE username = ?", (new_role, username))
-    conn.commit()
-    conn.close()
-
-    return RedirectResponse("/admin/usuarios?ok=role", status_code=303)
-
-
-@router.post("/usuarios/eliminar")
-def eliminar_usuario(request: Request, username: str = Form(...)):
-    admin = require_admin(request)
-    if isinstance(admin, RedirectResponse):
-        return admin
-
-    username = (username or "").strip()
-    if not username:
-        return RedirectResponse("/admin/usuarios?error=missing", status_code=303)
-
-    # 🔒 no eliminarte tú mismo
-    if username == admin.get("username"):
-        return RedirectResponse("/admin/usuarios?error=self_delete", status_code=303)
-
-    target = get_user(username)
-    if not target:
-        return RedirectResponse("/admin/usuarios?error=notfound", status_code=303)
-
-    # 🔒 no eliminar al último admin
-    if target["role"] == "admin" and count_admins() <= 1:
-        return RedirectResponse("/admin/usuarios?error=last_admin", status_code=303)
-
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM usuarios WHERE username = ?", (username,))
-    conn.commit()
-    conn.close()
-
-    return RedirectResponse("/admin/usuarios?ok=deleted", status_code=303)
+{% endblock %}
