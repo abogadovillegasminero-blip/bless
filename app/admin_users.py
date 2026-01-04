@@ -1,102 +1,171 @@
-{% extends "base.html" %}
-{% block content %}
+from fastapi import APIRouter, Request, Form
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h2 class="m-0">📈 Reportes</h2>
-  <a class="btn btn-secondary btn-sm" href="/dashboard">⬅ Volver</a>
-</div>
+from app.auth import require_admin
+from app.db import get_connection
+from app.security import hash_password
 
-{% if request.query_params.get("error") %}
-  <div class="alert alert-danger">No hay datos para exportar con esos filtros.</div>
-{% endif %}
+router = APIRouter(prefix="/admin", tags=["Admin"])
+templates = Jinja2Templates(directory="templates")
 
-<div class="card p-3 mb-3">
-  <form method="get" action="/reportes" class="row g-3 align-items-end">
-    <div class="col-md-2">
-      <div class="form-check">
-        <input class="form-check-input" type="checkbox" value="1" id="hoy" name="hoy" {% if hoy == "1" %}checked{% endif %}>
-        <label class="form-check-label" for="hoy">Solo hoy</label>
-      </div>
-    </div>
 
-    <div class="col-md-3">
-      <label class="form-label">Desde</label>
-      <input type="date" class="form-control" name="desde" value="{{ desde }}">
-    </div>
+def _list_users():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id, username, role FROM usuarios ORDER BY id ASC")
+    rows = cur.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
-    <div class="col-md-3">
-      <label class="form-label">Hasta</label>
-      <input type="date" class="form-control" name="hasta" value="{{ hasta }}">
-    </div>
 
-    <div class="col-md-2">
-      <label class="form-label">Cédula</label>
-      <input class="form-control" name="cedula" placeholder="Filtrar" value="{{ cedula }}">
-    </div>
+def _get_username_by_id(user_id: int) -> str:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT username FROM usuarios WHERE id = ?", (user_id,))
+    row = cur.fetchone()
+    conn.close()
+    return row["username"] if row else ""
 
-    <div class="col-md-2 d-flex gap-2">
-      <button class="btn btn-primary w-100">Aplicar</button>
-      <a class="btn btn-outline-secondary w-100" href="/reportes">Limpiar</a>
-    </div>
-  </form>
-</div>
 
-<div class="row g-3 mb-3">
-  <div class="col-md-6">
-    <div class="card p-3">
-      <div class="text-muted">Cantidad de pagos</div>
-      <div class="fs-4 fw-bold">{{ cantidad }}</div>
-    </div>
-  </div>
-  <div class="col-md-6">
-    <div class="card p-3">
-      <div class="text-muted">Total (suma de pagos)</div>
-      <div class="fs-4 fw-bold">$ {{ "{:,.0f}".format(total|float).replace(",", ".") }}</div>
-    </div>
-  </div>
-</div>
+def _create_user(username: str, password: str, role: str) -> bool:
+    username = (username or "").strip()
+    role = (role or "user").strip().lower()
+    if role not in ("admin", "user"):
+        role = "user"
 
-<div class="d-flex gap-2 mb-3">
-  <a class="btn btn-success"
-     href="/reportes/exportar?hoy={{ hoy }}&desde={{ desde }}&hasta={{ hasta }}&cedula={{ cedula }}">
-    📤 Exportar Excel (con filtros)
-  </a>
-</div>
+    if not username or not password:
+        return False
 
-<div class="card p-3">
-  <div class="table-responsive">
-    <table class="table table-bordered bg-white m-0">
-      <thead>
-        <tr>
-          <th>Cliente</th>
-          <th>Cédula</th>
-          <th>Fecha</th>
-          <th>Hora</th>
-          <th>Valor</th>
-          <th>Tipo</th>
-          <th>Registrado por</th>
-        </tr>
-      </thead>
+    hashed = hash_password(password)
 
-      <tbody>
-        {% if pagos|length == 0 %}
-          <tr><td colspan="7" class="text-center">No hay pagos con esos filtros</td></tr>
-        {% endif %}
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "INSERT INTO usuarios (username, password, role) VALUES (?, ?, ?)",
+            (username, hashed, role),
+        )
+        conn.commit()
+        ok = True
+    except Exception:
+        ok = False
+    finally:
+        conn.close()
 
-        {% for p in pagos %}
-        <tr>
-          <td>{{ p["cliente"] }}</td>
-          <td>{{ p["cedula"] }}</td>
-          <td>{{ p["fecha"] }}</td>
-          <td>{{ p.get("hora","") }}</td>
-          <td>$ {{ "{:,.0f}".format(p["valor"]|float).replace(",", ".") }}</td>
-          <td>{{ p["tipo_cobro"] }}</td>
-          <td>{{ p.get("registrado_por","") }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
+    return ok
 
-{% endblock %}
+
+def _set_role(user_id: int, role: str):
+    role = (role or "user").strip().lower()
+    if role not in ("admin", "user"):
+        role = "user"
+
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE usuarios SET role = ? WHERE id = ?", (role, user_id))
+    conn.commit()
+    conn.close()
+
+
+def _delete_user(user_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM usuarios WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def _reset_password(user_id: int, new_password: str):
+    hashed = hash_password(new_password)
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE usuarios SET password = ? WHERE id = ?", (hashed, user_id))
+    conn.commit()
+    conn.close()
+
+
+@router.get("/usuarios", response_class=HTMLResponse)
+def admin_usuarios(request: Request):
+    admin = require_admin(request)
+    if isinstance(admin, RedirectResponse):
+        return admin
+
+    ok = request.query_params.get("ok")  # "1"
+    err = request.query_params.get("err")  # "1"
+
+    users = _list_users()
+
+    return templates.TemplateResponse(
+        "admin_usuarios.html",
+        {"request": request, "user": admin, "users": users, "ok": ok, "err": err},
+    )
+
+
+@router.post("/usuarios/crear")
+def crear_usuario(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    role: str = Form("user"),
+):
+    admin = require_admin(request)
+    if isinstance(admin, RedirectResponse):
+        return admin
+
+    ok = _create_user(username, password, role)
+    return RedirectResponse("/admin/usuarios?ok=1" if ok else "/admin/usuarios?err=1", status_code=303)
+
+
+@router.post("/usuarios/cambiar_rol")
+def cambiar_rol(
+    request: Request,
+    user_id: int = Form(...),
+    role: str = Form(...),
+):
+    admin = require_admin(request)
+    if isinstance(admin, RedirectResponse):
+        return admin
+
+    # Bloqueo mínimo: no te quites admin a ti mismo
+    if str(admin.get("username")) == _get_username_by_id(int(user_id)):
+        if role.strip().lower() != "admin":
+            return RedirectResponse("/admin/usuarios?err=1", status_code=303)
+
+    _set_role(int(user_id), role)
+    return RedirectResponse("/admin/usuarios?ok=1", status_code=303)
+
+
+@router.post("/usuarios/reset_password")
+def reset_password(
+    request: Request,
+    user_id: int = Form(...),
+    new_password: str = Form(...),
+):
+    admin = require_admin(request)
+    if isinstance(admin, RedirectResponse):
+        return admin
+
+    new_password = (new_password or "").strip()
+    if len(new_password) < 4:
+        return RedirectResponse("/admin/usuarios?err=1", status_code=303)
+
+    _reset_password(int(user_id), new_password)
+    return RedirectResponse("/admin/usuarios?ok=1", status_code=303)
+
+
+@router.post("/usuarios/eliminar")
+def eliminar_usuario(
+    request: Request,
+    user_id: int = Form(...),
+):
+    admin = require_admin(request)
+    if isinstance(admin, RedirectResponse):
+        return admin
+
+    # No se elimina a sí mismo
+    if str(admin.get("username")) == _get_username_by_id(int(user_id)):
+        return RedirectResponse("/admin/usuarios?err=1", status_code=303)
+
+    _delete_user(int(user_id))
+    return RedirectResponse("/admin/usuarios?ok=1", status_code=303)
