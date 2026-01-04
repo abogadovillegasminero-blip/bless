@@ -1,22 +1,34 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Login</title>
-</head>
-<body>
+{% extends "base.html" %}
+{% block content %}
 
-<h2>Login</h2>
+<div class="row justify-content-center">
+  <div class="col-md-5 col-lg-4">
 
-<form method="post" action="/login">
-    <label>Usuario</label><br>
-    <input type="text" name="username" required><br><br>
+    <div class="card p-4">
+      <h3 class="text-center mb-3">🔐 Iniciar sesión</h3>
 
-    <label>Contraseña</label><br>
-    <input type="password" name="password" required><br><br>
+      {% if error %}
+        <div class="alert alert-danger text-center" role="alert">
+          ❌ Usuario o contraseña incorrectos (o sesión expirada). Intenta de nuevo.
+        </div>
+      {% endif %}
 
-    <button type="submit">Entrar</button>
-</form>
+      <form method="post" action="/login">
+        <div class="mb-3">
+          <label class="form-label">Usuario</label>
+          <input type="text" name="username" class="form-control" required>
+        </div>
 
-</body>
-</html>
+        <div class="mb-3">
+          <label class="form-label">Contraseña</label>
+          <input type="password" name="password" class="form-control" required>
+        </div>
+
+        <button type="submit" class="btn btn-primary w-100">Entrar</button>
+      </form>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}
