@@ -1,47 +1,30 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Bless – Inicio</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: #f4f6f8;
-            text-align: center;
-            padding-top: 60px;
-        }
-        h1 {
-            color: #2c3e50;
-        }
-        .menu {
-            margin-top: 40px;
-        }
-        a {
-            display: block;
-            width: 220px;
-            margin: 15px auto;
-            padding: 15px;
-            background: #3498db;
-            color: white;
-            text-decoration: none;
-            border-radius: 6px;
-            font-size: 18px;
-        }
-        a:hover {
-            background: #2980b9;
-        }
-    </style>
-</head>
-<body>
+{% extends "base.html" %}
+{% block content %}
 
-<h1>📊 Sistema Bless</h1>
-<p>Gestión de clientes y cobros</p>
+<div class="row justify-content-center">
+  <div class="col-md-6 col-lg-5">
 
-<div class="menu">
-    <a href="/clientes-ui">👥 Clientes</a>
-    <a href="/pagos-ui">💰 Pagos</a>
-    <a href="/reportes-ui">📈 Reportes</a>
+    <div class="card p-4">
+      <h3 class="text-center mb-2">💰 BLESS</h3>
+      <div class="text-center text-muted mb-3">
+        Usuario: <b>{{ user.username }}</b>
+      </div>
+
+      <div class="d-grid gap-2">
+        <a href="/clientes" class="btn btn-primary">👥 Clientes</a>
+        <a href="/pagos" class="btn btn-primary">💵 Pagos</a>
+        <a href="/saldos" class="btn btn-primary">📊 Saldos</a>
+
+        {% if user.role == "admin" %}
+          <a href="/reportes" class="btn btn-secondary">📈 Reportes</a>
+          <a href="/admin/usuarios" class="btn btn-secondary">👤 Usuarios</a>
+        {% endif %}
+
+        <a href="/logout" class="btn btn-danger">🔒 Cerrar sesión</a>
+      </div>
+    </div>
+
+  </div>
 </div>
 
-</body>
-</html>
+{% endblock %}
