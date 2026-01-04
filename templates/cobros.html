@@ -37,7 +37,7 @@
         <th>Pagado semana</th>
         <th>Debe (hoy/semana)</th>
         <th>Saldo total</th>
-        <th style="width:320px;">Acciones</th>
+        <th style="width:340px;">Acciones</th>
       </tr>
     </thead>
     <tbody>
@@ -77,6 +77,7 @@
                 onsubmit="return confirm('¿Registrar este pago rápido con fecha de HOY?');">
             <input type="hidden" name="cedula" value="{{ r['cedula'] }}">
 
+            <!-- ✅ input capado por saldo (frontend) -->
             <input
               type="number"
               name="valor"
@@ -84,12 +85,14 @@
               required
               min="0"
               step="0.01"
-              value="{{ r['debe']|float }}"
-              style="width:130px;"
+              max="{{ r['saldo']|float }}"
+              value="{{ r['valor_sugerido']|float }}"
+              style="width:150px;"
               onfocus="this.select()"
+              title="No puede ser mayor al saldo"
             >
 
-            <button class="btn btn-success btn-sm" style="min-width:150px;">Pago rápido (hoy)</button>
+            <button class="btn btn-success btn-sm" style="min-width:160px;">Pago rápido (hoy)</button>
           </form>
           {% endif %}
 
