@@ -117,7 +117,7 @@ def home(request: Request):
 
             {"<a class='admin' href='/reportes'>📈 Reportes</a>" if es_admin else ""}
             {"<a class='admin' href='/admin/usuarios'>👤 Usuarios</a>" if es_admin else ""}
-
+            
             <a class="logout" href="/logout">🔒 Cerrar sesión</a>
         </div>
     </body>
