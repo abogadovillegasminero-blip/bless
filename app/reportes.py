@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
-from app.auth import require_admin
+from fastapi import APIRouter, Depends
+from fastapi.responses import HTMLResponse, FileResponse
+from app.auth import get_current_user
 import pandas as pd
 import os
 
@@ -12,29 +12,33 @@ EXPORT = f"{BASE}/reporte_pagos.xlsx"
 
 
 @router.get("/", response_class=HTMLResponse)
-def ver_reportes(request: Request):
-    user = require_admin(request)
-    if isinstance(user, RedirectResponse):
-        return user
+def ver_reportes(user=Depends(get_current_user)):
+    # Solo admin ve reportes (si no es admin, lo sacas)
+    if user.get("role") != "admin":
+        return "<h3>Acceso restringido</h3><a href='/'>Volver</a>"
 
     if not os.path.exists(PAGOS):
-        filas = "<tr><td colspan='3'>No hay pagos</td></tr>"
+        filas = "<tr><td colspan='5'>No hay pagos</td></tr>"
     else:
         df = pd.read_excel(PAGOS)
 
-        # Compatibilidad por si existen columnas antiguas
-        if "valor" in df.columns and "monto" not in df.columns:
-            df = df.rename(columns={"valor": "monto"})
-        if "cliente" in df.columns and "cedula" not in df.columns:
-            df = df.rename(columns={"cliente": "cedula"})
+        # Compatibilidad por si guardaste "monto"
+        if "monto" in df.columns and "valor" not in df.columns:
+            df.rename(columns={"monto": "valor"}, inplace=True)
+
+        for col in ["cliente", "cedula", "fecha", "valor", "tipo_cobro"]:
+            if col not in df.columns:
+                df[col] = ""
 
         filas = ""
         for _, r in df.iterrows():
             filas += f"""
             <tr>
-                <td>{r.get('cedula','')}</td>
-                <td>{r.get('fecha','')}</td>
-                <td>{r.get('monto','')}</td>
+                <td>{r['cliente']}</td>
+                <td>{r['cedula']}</td>
+                <td>{r['fecha']}</td>
+                <td>{r['valor']}</td>
+                <td>{r['tipo_cobro']}</td>
             </tr>
             """
 
@@ -60,16 +64,18 @@ def ver_reportes(request: Request):
         </style>
     </head>
     <body>
-        <h2>📈 Reporte de Pagos (Solo Admin)</h2>
+        <h2>📈 Reporte de Pagos</h2>
 
         <a href="/reportes/exportar">📤 Exportar a Excel</a>
         <a href="/">⬅ Volver</a>
 
         <table>
             <tr>
+                <th>Cliente</th>
                 <th>Cédula</th>
                 <th>Fecha</th>
-                <th>Monto</th>
+                <th>Valor</th>
+                <th>Tipo</th>
             </tr>
             {filas}
         </table>
@@ -79,21 +85,17 @@ def ver_reportes(request: Request):
 
 
 @router.get("/exportar")
-def exportar_excel(request: Request):
-    user = require_admin(request)
-    if isinstance(user, RedirectResponse):
-        return user
+def exportar_excel(user=Depends(get_current_user)):
+    if user.get("role") != "admin":
+        return {"error": "Acceso restringido"}
 
     if not os.path.exists(PAGOS):
         return {"error": "No hay datos"}
 
     df = pd.read_excel(PAGOS)
 
-    # Compatibilidad por si existen columnas antiguas
-    if "valor" in df.columns and "monto" not in df.columns:
-        df = df.rename(columns={"valor": "monto"})
-    if "cliente" in df.columns and "cedula" not in df.columns:
-        df = df.rename(columns={"cliente": "cedula"})
+    if "monto" in df.columns and "valor" not in df.columns:
+        df.rename(columns={"monto": "valor"}, inplace=True)
 
     df.to_excel(EXPORT, index=False)
 
