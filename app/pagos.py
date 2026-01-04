@@ -29,7 +29,7 @@ def _load_clientes():
     df["cedula"] = df["cedula"].astype(str)
     df["nombre"] = df["nombre"].astype(str).replace(["nan", "NaT", "None"], "")
     df["tipo_cobro"] = df["tipo_cobro"].astype(str).replace(["nan", "NaT", "None"], "")
-
+    df["monto"] = pd.to_numeric(df["monto"], errors="coerce").fillna(0)
     return df
 
 
@@ -51,8 +51,11 @@ def _load_pagos():
     df["fecha"] = df["fecha"].astype(str).replace(["nan", "NaT", "None"], "")
     df["tipo_cobro"] = df["tipo_cobro"].astype(str).replace(["nan", "NaT", "None"], "")
     df["valor"] = pd.to_numeric(df["valor"], errors="coerce").fillna(0)
-
     return df
+
+
+def _save_pagos(df: pd.DataFrame):
+    df.to_excel(PAGOS, index=False)
 
 
 @router.get("/pagos", response_class=HTMLResponse)
@@ -67,12 +70,9 @@ def pagos_form(request: Request):
     clientes = clientes_df.to_dict(orient="records")
 
     pagos_df = _load_pagos()
-
-    # Ordenar por fecha (más recientes arriba) sin romper si hay fechas malas
     try:
         pagos_df["_fecha_dt"] = pd.to_datetime(pagos_df["fecha"], errors="coerce")
-        pagos_df = pagos_df.sort_values(by="_fecha_dt", ascending=False)
-        pagos_df = pagos_df.drop(columns=["_fecha_dt"])
+        pagos_df = pagos_df.sort_values(by="_fecha_dt", ascending=False).drop(columns=["_fecha_dt"])
     except Exception:
         pass
 
@@ -85,7 +85,7 @@ def pagos_form(request: Request):
             "clientes": clientes,
             "pagos": pagos,
             "user": user,
-            "pre_cedula": pre_cedula,  # ✅ para preseleccionar
+            "pre_cedula": pre_cedula,
         }
     )
 
@@ -121,7 +121,7 @@ def guardar_pago(
 
     pagos_df = _load_pagos()
     pagos_df = pd.concat([pagos_df, pd.DataFrame([nuevo])], ignore_index=True)
-    pagos_df.to_excel(PAGOS, index=False)
+    _save_pagos(pagos_df)
 
     return RedirectResponse(f"/pagos?cedula={cedula}", status_code=303)
 
@@ -136,12 +136,11 @@ def eliminar_pago(
         return user
 
     pagos_df = _load_pagos()
-
     if row_id < 0 or row_id >= len(pagos_df):
         return RedirectResponse("/pagos", status_code=303)
 
     pagos_df = pagos_df.drop(index=row_id).reset_index(drop=True)
-    pagos_df.to_excel(PAGOS, index=False)
+    _save_pagos(pagos_df)
 
     return RedirectResponse("/pagos", status_code=303)
 
@@ -167,13 +166,16 @@ def editar_pago(request: Request, row_id: int):
         "cliente": str(row.get("cliente", "")),
         "cedula": str(row.get("cedula", "")),
         "fecha": fecha,
-        "valor": row.get("valor", 0),
+        "valor": float(row.get("valor", 0)),
         "tipo_cobro": str(row.get("tipo_cobro", "")),
     }
 
+    clientes_df = _load_clientes()
+    clientes = clientes_df.to_dict(orient="records")
+
     return templates.TemplateResponse(
         "pagos_editar.html",
-        {"request": request, "pago": pago, "user": user}
+        {"request": request, "pago": pago, "clientes": clientes, "user": user}
     )
 
 
@@ -181,6 +183,7 @@ def editar_pago(request: Request, row_id: int):
 def actualizar_pago(
     request: Request,
     row_id: int = Form(...),
+    cedula: str = Form(...),          # ✅ ahora se puede cambiar cliente
     valor: float = Form(...),
     fecha: str = Form(...),
 ):
@@ -192,8 +195,22 @@ def actualizar_pago(
     if row_id < 0 or row_id >= len(pagos_df):
         return RedirectResponse("/pagos", status_code=303)
 
+    clientes_df = _load_clientes()
+    cedula = str(cedula)
+
+    match = clientes_df[clientes_df["cedula"].astype(str) == cedula]
+    if match.empty:
+        return RedirectResponse("/pagos", status_code=303)
+
+    cliente_nombre = str(match.iloc[0]["nombre"])
+    tipo_cobro = str(match.iloc[0]["tipo_cobro"])
+
+    pagos_df.loc[row_id, "cedula"] = cedula
+    pagos_df.loc[row_id, "cliente"] = cliente_nombre
+    pagos_df.loc[row_id, "tipo_cobro"] = tipo_cobro
     pagos_df.loc[row_id, "valor"] = float(valor)
     pagos_df.loc[row_id, "fecha"] = str(fecha)
 
-    pagos_df.to_excel(PAGOS, index=False)
+    _save_pagos(pagos_df)
+
     return RedirectResponse("/pagos", status_code=303)
