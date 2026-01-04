@@ -9,6 +9,7 @@
 {% if total_alertas and total_alertas > 0 %}
   <div class="alert alert-warning">
     ⚠️ <b>{{ total_alertas }}</b> cliente(s) sin pago en el período (hoy/semana) y con saldo pendiente.
+    <br><small>Tip: escribe el valor y presiona <b>Enter</b> para registrar.</small>
   </div>
 {% else %}
   <div class="alert alert-success">
@@ -45,6 +46,8 @@
         <tr><td colspan="10" class="text-center">No hay clientes</td></tr>
       {% endif %}
 
+      {% set ns = namespace(focus_set=false) %}
+
       {% for r in filas %}
       <tr {% if r["alerta"] %}style="background:#fff3cd;"{% endif %}>
         <td>
@@ -73,15 +76,14 @@
 
         <td>
           {% if r["saldo"]|float > 0 %}
-          <form method="post" action="/cobros/pago_rapido" class="d-flex gap-2 mb-2"
+          <form method="post" action="/cobros/pago_rapido" class="d-flex gap-2 mb-2 pago-rapido-form"
                 onsubmit="return confirm('¿Registrar este pago rápido con fecha de HOY?');">
             <input type="hidden" name="cedula" value="{{ r['cedula'] }}">
 
-            <!-- ✅ input capado por saldo (frontend) -->
             <input
               type="number"
               name="valor"
-              class="form-control form-control-sm"
+              class="form-control form-control-sm pago-rapido-input"
               required
               min="0"
               step="0.01"
@@ -90,6 +92,11 @@
               style="width:150px;"
               onfocus="this.select()"
               title="No puede ser mayor al saldo"
+              {% if (not ns.focus_set) and r["alerta"] %}
+                autofocus
+                data-autofocus="1"
+                {% set ns.focus_set = true %}
+              {% endif %}
             >
 
             <button class="btn btn-success btn-sm" style="min-width:160px;">Pago rápido (hoy)</button>
@@ -104,5 +111,28 @@
     </tbody>
   </table>
 </div>
+
+<script>
+  // ✅ Si hay un input marcado para autofocus, lo enfoca al cargar
+  window.addEventListener("load", function () {
+    const el = document.querySelector('[data-autofocus="1"]');
+    if (el) {
+      el.focus();
+      el.select();
+    }
+  });
+
+  // ✅ Enter dentro del input = enviar el form (sin mouse)
+  document.addEventListener("keydown", function (e) {
+    const target = e.target;
+    if (!target) return;
+
+    if (e.key === "Enter" && target.classList.contains("pago-rapido-input")) {
+      e.preventDefault();
+      const form = target.closest("form");
+      if (form) form.requestSubmit();
+    }
+  });
+</script>
 
 {% endblock %}
