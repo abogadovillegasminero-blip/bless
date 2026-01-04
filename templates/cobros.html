@@ -38,7 +38,7 @@
         <th>Pagado semana</th>
         <th>Debe (hoy/semana)</th>
         <th>Saldo total</th>
-        <th style="width:340px;">Acciones</th>
+        <th style="width:380px;">Acciones</th>
       </tr>
     </thead>
     <tbody>
@@ -49,15 +49,23 @@
       {% set ns = namespace(focus_set=false) %}
 
       {% for r in filas %}
-      <tr {% if r["alerta"] %}style="background:#fff3cd;"{% endif %}>
+      <tr
+        {% if r["alerta"] %}style="background:#fff3cd;"
+        {% elif r["omitido_hoy"] %}style="background:#eef2f7; opacity:0.85;"
+        {% endif %}
+      >
         <td>
           {% if r["saldo"]|float <= 0 %}
             ✅ Al día
           {% else %}
-            {% if r["alerta"] %}
-              ⚠️ Sin pago
+            {% if r["omitido_hoy"] %}
+              💤 No cobrar hoy
             {% else %}
-              ✅ Pagó
+              {% if r["alerta"] %}
+                ⚠️ Sin pago
+              {% else %}
+                ✅ Pagó
+              {% endif %}
             {% endif %}
           {% endif %}
         </td>
@@ -76,31 +84,45 @@
 
         <td>
           {% if r["saldo"]|float > 0 %}
-          <form method="post" action="/cobros/pago_rapido" class="d-flex gap-2 mb-2 pago-rapido-form"
-                onsubmit="return confirm('¿Registrar este pago rápido con fecha de HOY?');">
-            <input type="hidden" name="cedula" value="{{ r['cedula'] }}">
 
-            <input
-              type="number"
-              name="valor"
-              class="form-control form-control-sm pago-rapido-input"
-              required
-              min="0"
-              step="0.01"
-              max="{{ r['saldo']|float }}"
-              value="{{ r['valor_sugerido']|float }}"
-              style="width:150px;"
-              onfocus="this.select()"
-              title="No puede ser mayor al saldo"
-              {% if (not ns.focus_set) and r["alerta"] %}
-                autofocus
-                data-autofocus="1"
-                {% set ns.focus_set = true %}
-              {% endif %}
-            >
+            <!-- ✅ PAGO RÁPIDO (solo si NO está omitido hoy) -->
+            {% if not r["omitido_hoy"] %}
+            <form method="post" action="/cobros/pago_rapido" class="d-flex gap-2 mb-2 pago-rapido-form"
+                  onsubmit="return confirm('¿Registrar este pago rápido con fecha de HOY?');">
+              <input type="hidden" name="cedula" value="{{ r['cedula'] }}">
 
-            <button class="btn btn-success btn-sm" style="min-width:160px;">Pago rápido (hoy)</button>
-          </form>
+              <input
+                type="number"
+                name="valor"
+                class="form-control form-control-sm pago-rapido-input"
+                required
+                min="0"
+                step="0.01"
+                max="{{ r['saldo']|float }}"
+                value="{{ r['valor_sugerido']|float }}"
+                style="width:150px;"
+                onfocus="this.select()"
+                title="No puede ser mayor al saldo"
+                {% if (not ns.focus_set) and r["alerta"] %}
+                  autofocus
+                  data-autofocus="1"
+                  {% set ns.focus_set = true %}
+                {% endif %}
+              >
+
+              <button class="btn btn-success btn-sm" style="min-width:160px;">Pago rápido (hoy)</button>
+            </form>
+            {% endif %}
+
+            <!-- ✅ NO COBRAR HOY -->
+            <form method="post" action="/cobros/no_cobrar_hoy" class="mb-2"
+                  onsubmit="return confirm('¿Marcar este cliente como NO COBRAR HOY?');">
+              <input type="hidden" name="cedula" value="{{ r['cedula'] }}">
+              <button class="btn btn-outline-secondary btn-sm w-100" {% if r["omitido_hoy"] %}disabled{% endif %}>
+                💤 No cobrar hoy
+              </button>
+            </form>
+
           {% endif %}
 
           <a class="btn btn-outline-success btn-sm w-100 mb-1" href="/pagos?cedula={{ r['cedula'] }}">Registrar pago</a>
@@ -113,7 +135,6 @@
 </div>
 
 <script>
-  // ✅ Si hay un input marcado para autofocus, lo enfoca al cargar
   window.addEventListener("load", function () {
     const el = document.querySelector('[data-autofocus="1"]');
     if (el) {
@@ -122,7 +143,6 @@
     }
   });
 
-  // ✅ Enter dentro del input = enviar el form (sin mouse)
   document.addEventListener("keydown", function (e) {
     const target = e.target;
     if (!target) return;
