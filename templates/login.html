@@ -1,38 +1,30 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Login</title>
-</head>
-<body>
-    <h2>Iniciar sesión</h2>
+{% extends "base.html" %}
+{% block content %}
 
-    {% if error %}
-      <div style="
-          background:#ffe2e2;
-          border:1px solid #ffb3b3;
-          color:#8a1f1f;
-          padding:10px 12px;
-          border-radius:10px;
-          margin-bottom:12px;
-          font-family: Arial;
-          text-align:center;
-          max-width: 420px;
-      ">
-        ❌ Usuario o contraseña incorrectos (o sesión expirada). Intenta de nuevo.
+<div class="row justify-content-center">
+  <div class="col-md-6 col-lg-5">
+
+    <div class="card p-4">
+      <h3 class="text-center mb-2">💰 BLESS</h3>
+      <div class="text-center text-muted mb-3">
+        Usuario: <b>{{ user.username }}</b>
       </div>
-    {% endif %}
 
-    <form method="post" action="/login">
-        <label>Usuario</label><br>
-        <input name="username" required>
-        <br><br>
+      <div class="d-grid gap-2">
+        <a href="/clientes" class="btn btn-primary">👥 Clientes</a>
+        <a href="/pagos" class="btn btn-primary">💵 Pagos</a>
+        <a href="/saldos" class="btn btn-primary">📊 Saldos</a>
 
-        <label>Contraseña</label><br>
-        <input type="password" name="password" required>
-        <br><br>
+        {% if user.role == "admin" %}
+          <a href="/reportes" class="btn btn-secondary">📈 Reportes</a>
+          <a href="/admin/usuarios" class="btn btn-secondary">👤 Usuarios</a>
+        {% endif %}
 
-        <button type="submit">Entrar</button>
-    </form>
+        <a href="/logout" class="btn btn-danger">🔒 Cerrar sesión</a>
+      </div>
+    </div>
 
-</body>
-</html>
+  </div>
+</div>
+
+{% endblock %}
