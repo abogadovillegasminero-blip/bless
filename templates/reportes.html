@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container mt-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h3 class="mb-0">📈 Reportes</h3>
+      <small class="text-muted">Solo admin</small>
+    </div>
+
+    <div class="d-flex gap-2">
+      <a href="/dashboard" class="btn btn-outline-secondary">Volver</a>
+      <a href="/reportes/exportar-todo" class="btn btn-success">
+        Exportar TODO
+      </a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <p class="mb-2">
+        Descarga un archivo Excel (.xlsx) con dos hojas:
+        <strong>CLIENTES</strong> y <strong>PAGOS</strong>.
+      </p>
+      <ul class="mb-0">
+        <li>Incluye todas las columnas reales de tu SQLite (sin inventar campos).</li>
+        <li>Incluye todos los registros existentes en la BD.</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}
