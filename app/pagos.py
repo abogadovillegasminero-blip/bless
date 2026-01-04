@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, date
 
 import pandas as pd
 from fastapi import APIRouter, Request, Form
@@ -74,11 +74,32 @@ def pagos_form(request: Request):
     clientes = clientes_df.to_dict(orient="records")
 
     pagos_df = _load_pagos()
+
+    # ✅ filtros por querystring
+    solo_hoy = request.query_params.get("hoy")  # "1" si aplica
+    cedula_filtro = (request.query_params.get("cedula") or "").strip()
+
+    hoy_str = date.today().isoformat()
+
+    if solo_hoy == "1":
+        pagos_df = pagos_df[pagos_df["fecha"].astype(str) == hoy_str]
+
+    if cedula_filtro:
+        pagos_df = pagos_df[pagos_df["cedula"].astype(str).str.contains(cedula_filtro, na=False)]
+
     pagos = pagos_df.to_dict(orient="records")
 
     return templates.TemplateResponse(
         "pagos.html",
-        {"request": request, "clientes": clientes, "pagos": pagos, "user": user}
+        {
+            "request": request,
+            "clientes": clientes,
+            "pagos": pagos,
+            "user": user,
+            "hoy": hoy_str,
+            "solo_hoy": (solo_hoy == "1"),
+            "cedula_filtro": cedula_filtro,
+        }
     )
 
 
@@ -135,11 +156,9 @@ def eliminar_pago(
 
     pagos_df = _load_pagos()
 
-    # seguridad: validar rango
     if row_id < 0 or row_id >= len(pagos_df):
         return RedirectResponse("/pagos", status_code=303)
 
-    # eliminar fila exacta
     pagos_df = pagos_df.drop(index=row_id).reset_index(drop=True)
     pagos_df.to_excel(PAGOS, index=False)
 
