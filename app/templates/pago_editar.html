@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Editar Pago</h2>
+
+<form method="post" action="/pagos/editar" class="card p-3">
+  <input type="hidden" name="row_id" value="{{ pago['row_id'] }}">
+
+  <div class="mb-3">
+    <label>Cliente</label>
+    <select name="cedula" class="form-control" required>
+      {% for c in clientes %}
+        <option value="{{ c['cedula'] }}"
+          {% if c['cedula'] == pago['cedula'] %}selected{% endif %}>
+          {{ c['nombre'] }} - {{ c['cedula'] }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="mb-3">
+    <label>Valor</label>
+    <input type="number" name="valor" class="form-control" value="{{ pago['valor'] }}" required>
+  </div>
+
+  <div class="mb-3">
+    <label>Fecha</label>
+    <input type="date" name="fecha" class="form-control" value="{{ pago['fecha'] }}" required>
+  </div>
+
+  <button class="btn btn-primary w-100">Guardar cambios</button>
+  <a href="/pagos" class="btn btn-outline-secondary w-100 mt-2">Cancelar</a>
+</form>
+
+{% endblock %}
