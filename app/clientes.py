@@ -21,12 +21,10 @@ def _load_clientes():
 
     df = pd.read_excel(ARCHIVO)
 
-    # normaliza columnas
     for col in ["nombre", "cedula", "telefono", "monto", "tipo_cobro"]:
         if col not in df.columns:
             df[col] = ""
 
-    # limpia
     df["cedula"] = df["cedula"].astype(str)
     df["nombre"] = df["nombre"].astype(str).replace(["nan", "NaT", "None"], "")
     df["telefono"] = df["telefono"].astype(str).replace(["nan", "NaT", "None"], "")
@@ -52,7 +50,7 @@ def ver_clientes(request: Request):
     if isinstance(user, RedirectResponse):
         return user
 
-    df = _load_clientes()
+    df = _load_clientes().reset_index(drop=True)
     clientes = df.to_dict(orient="records")
 
     return templates.TemplateResponse(
@@ -79,17 +77,8 @@ def guardar_cliente(
     telefono = str(telefono).strip()
     tipo_cobro = str(tipo_cobro).strip().lower()
 
-    nuevo = {
-        "nombre": nombre,
-        "cedula": cedula,
-        "telefono": telefono,
-        "monto": float(monto),
-        "tipo_cobro": tipo_cobro,
-    }
+    df = _load_clientes().reset_index(drop=True)
 
-    df = _load_clientes()
-
-    # evita duplicado por cédula (si existe, lo actualiza)
     existe = df[df["cedula"].astype(str) == cedula]
     if not existe.empty:
         idx = existe.index[0]
@@ -98,6 +87,13 @@ def guardar_cliente(
         df.at[idx, "monto"] = float(monto)
         df.at[idx, "tipo_cobro"] = tipo_cobro
     else:
+        nuevo = {
+            "nombre": nombre,
+            "cedula": cedula,
+            "telefono": telefono,
+            "monto": float(monto),
+            "tipo_cobro": tipo_cobro,
+        }
         df = pd.concat([df, pd.DataFrame([nuevo])], ignore_index=True)
 
     _save_clientes(df)
@@ -114,7 +110,7 @@ def ver_cliente(request: Request):
     if not cedula:
         return RedirectResponse("/clientes", status_code=303)
 
-    df = _load_clientes()
+    df = _load_clientes().reset_index(drop=True)
     match = df[df["cedula"].astype(str) == cedula]
 
     if match.empty:
@@ -126,3 +122,91 @@ def ver_cliente(request: Request):
         "cliente_ver.html",
         {"request": request, "cliente": cliente, "user": user}
     )
+
+
+# =========================
+# EDITAR CLIENTE (GET)
+# =========================
+@router.get("/clientes/editar/{row_id}", response_class=HTMLResponse)
+def editar_cliente(request: Request, row_id: int):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    df = _load_clientes().reset_index(drop=True)
+
+    if row_id < 0 or row_id >= len(df):
+        return RedirectResponse("/clientes", status_code=303)
+
+    row = df.iloc[row_id].to_dict()
+    row["row_id"] = row_id
+
+    return templates.TemplateResponse(
+        "cliente_editar.html",
+        {"request": request, "cliente": row, "user": user}
+    )
+
+
+# =========================
+# ACTUALIZAR CLIENTE (POST)
+# =========================
+@router.post("/clientes/actualizar")
+def actualizar_cliente(
+    request: Request,
+    row_id: int = Form(...),
+    nombre: str = Form(...),
+    cedula: str = Form(...),
+    telefono: str = Form(...),
+    monto: float = Form(...),
+    tipo_cobro: str = Form(...),
+):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    df = _load_clientes().reset_index(drop=True)
+
+    if row_id < 0 or row_id >= len(df):
+        return RedirectResponse("/clientes", status_code=303)
+
+    nombre = str(nombre).strip()
+    cedula = str(cedula).strip()
+    telefono = str(telefono).strip()
+    tipo_cobro = str(tipo_cobro).strip().lower()
+
+    # evita duplicar cédula si la cambian
+    duplicado = df[(df["cedula"].astype(str) == cedula) & (df.index != row_id)]
+    if not duplicado.empty:
+        return RedirectResponse("/clientes?error=cedula", status_code=303)
+
+    df.at[row_id, "nombre"] = nombre
+    df.at[row_id, "cedula"] = cedula
+    df.at[row_id, "telefono"] = telefono
+    df.at[row_id, "monto"] = float(monto)
+    df.at[row_id, "tipo_cobro"] = tipo_cobro
+
+    _save_clientes(df)
+    return RedirectResponse("/clientes", status_code=303)
+
+
+# =========================
+# ELIMINAR CLIENTE (POST)
+# =========================
+@router.post("/clientes/eliminar")
+def eliminar_cliente(
+    request: Request,
+    row_id: int = Form(...),
+):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    df = _load_clientes().reset_index(drop=True)
+
+    if row_id < 0 or row_id >= len(df):
+        return RedirectResponse("/clientes", status_code=303)
+
+    df = df.drop(index=row_id).reset_index(drop=True)
+    _save_clientes(df)
+
+    return RedirectResponse("/clientes", status_code=303)
