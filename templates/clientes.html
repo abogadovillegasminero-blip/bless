@@ -65,11 +65,11 @@
           <td>{{ c.tipo_cobro }}</td>
           <td class="d-flex gap-2">
             <a class="btn btn-info btn-sm w-100" href="/clientes/ver?cedula={{ c.cedula }}">Ver</a>
-            <a class="btn btn-warning btn-sm w-100" href="/clientes/editar/{{ loop.index0 }}">Editar</a>
+            <a class="btn btn-warning btn-sm w-100" href="/clientes/editar/{{ c.id }}">Editar</a>
 
             <form method="post" action="/clientes/eliminar" class="w-100"
                   onsubmit="return confirm('¿Eliminar este cliente?');">
-              <input type="hidden" name="row_id" value="{{ loop.index0 }}">
+              <input type="hidden" name="cliente_id" value="{{ c.id }}">
               <button class="btn btn-danger btn-sm w-100">Eliminar</button>
             </form>
           </td>
