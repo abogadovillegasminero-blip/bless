@@ -10,6 +10,7 @@ from app.clientes import router as clientes_router
 from app.pagos import router as pagos_router
 from app.saldos import router as saldos_router
 from app.reportes import router as reportes_router
+from app.admin_users import router as admin_users_router
 
 app = FastAPI()
 
@@ -24,11 +25,10 @@ def startup_event():
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request})
-
+    error = request.query_params.get("error")
+    return templates.TemplateResponse("login.html", {"request": request, "error": error})
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
@@ -111,6 +111,7 @@ def home(request: Request):
             <a href="/saldos">📊 Saldos</a>
 
             {"<a class='admin' href='/reportes'>📈 Reportes</a>" if es_admin else ""}
+            {"<a class='admin' href='/admin/usuarios'>👤 Usuarios</a>" if es_admin else ""}
 
             <a class="logout" href="/logout">🔒 Cerrar sesión</a>
         </div>
@@ -123,3 +124,4 @@ app.include_router(clientes_router)
 app.include_router(pagos_router)
 app.include_router(saldos_router)
 app.include_router(reportes_router)
+app.include_router(admin_users_router)
