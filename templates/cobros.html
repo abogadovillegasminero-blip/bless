@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="m-0">🧾 Plan de cobro</h2>
+  <a class="btn btn-secondary btn-sm" href="/dashboard">⬅ Volver</a>
+</div>
+
+<div class="alert alert-info">
+  <b>Hoy:</b> {{ today }} |
+  <b>Semana (desde lunes):</b> {{ week_start }} → {{ today }} <br>
+  <small>
+    Regla actual: <b>diario</b> = préstamo / 30 días, <b>semanal</b> = préstamo / 12 semanas.
+    (Luego lo hacemos configurable por cliente si quieres.)
+  </small>
+</div>
+
+<div class="card p-3">
+  <table class="table table-bordered bg-white m-0">
+    <thead>
+      <tr>
+        <th>Cliente</th>
+        <th>Cédula</th>
+        <th>Tipo</th>
+        <th>Cuota sugerida</th>
+        <th>Pagado hoy</th>
+        <th>Pagado semana</th>
+        <th>Debe (hoy/semana)</th>
+        <th>Saldo total</th>
+        <th style="width:180px;">Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if filas|length == 0 %}
+        <tr><td colspan="9" class="text-center">No hay clientes</td></tr>
+      {% endif %}
+
+      {% for r in filas %}
+      <tr>
+        <td>{{ r["nombre"] }}</td>
+        <td>{{ r["cedula"] }}</td>
+        <td><b>{{ r["tipo_cobro"] }}</b></td>
+
+        <td>$ {{ "{:,.0f}".format(r["cuota_sugerida"]|float).replace(",", ".") }}</td>
+        <td>$ {{ "{:,.0f}".format(r["pagado_hoy"]|float).replace(",", ".") }}</td>
+        <td>$ {{ "{:,.0f}".format(r["pagado_semana"]|float).replace(",", ".") }}</td>
+
+        <td>
+          <b>$ {{ "{:,.0f}".format(r["debe"]|float).replace(",", ".") }}</b>
+        </td>
+
+        <td>$ {{ "{:,.0f}".format(r["saldo"]|float).replace(",", ".") }}</td>
+
+        <td>
+          <a class="btn btn-success btn-sm w-100 mb-1" href="/pagos?cedula={{ r['cedula'] }}">Registrar pago</a>
+          <a class="btn btn-info btn-sm w-100" href="/clientes/ver?cedula={{ r['cedula'] }}">Ver cliente</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}
