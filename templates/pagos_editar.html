@@ -4,26 +4,20 @@
 <h2>Editar Pago</h2>
 
 <div class="card p-3">
+  <div class="mb-2">
+    <b>Cliente:</b> {{ pago.cliente }} <br>
+    <b>Cédula:</b> {{ pago.cedula }} <br>
+    <b>Tipo cobro:</b> {{ pago.tipo_cobro }} <br>
+    <b>Registrado por:</b> {{ pago.registrado_por }} <br>
+    <b>Hora:</b> {{ pago.hora }}
+  </div>
 
-  <form method="post" action="/pagos/actualizar">
+  <form method="post" action="/pagos/actualizar" onsubmit="return confirm('¿Guardar cambios de este pago?');">
     <input type="hidden" name="row_id" value="{{ pago.row_id }}">
 
     <div class="mb-3">
-      <label class="form-label">Cliente</label>
-      <select name="cedula" class="form-control" required>
-        {% for c in clientes %}
-          <option value="{{ c['cedula'] }}"
-            {% if c['cedula']|string == pago.cedula|string %}selected{% endif %}>
-            {{ c['nombre'] }} - {{ c['cedula'] }}
-          </option>
-        {% endfor %}
-      </select>
-      <div class="form-text">Si cambias el cliente, se actualiza cédula/nombre/tipo automáticamente.</div>
-    </div>
-
-    <div class="mb-3">
       <label class="form-label">Valor</label>
-      <input type="number" name="valor" class="form-control" required value="{{ pago.valor }}">
+      <input type="number" name="valor" class="form-control" required min="0" step="0.01" value="{{ pago.valor }}">
     </div>
 
     <div class="mb-3">
