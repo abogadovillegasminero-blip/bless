@@ -132,7 +132,7 @@ def _saldo_actual(cedula: str) -> float:
 
 
 # =========================
-# NO COBRAR HOY
+# NO COBRAR HOY (AGREGAR)
 # =========================
 @router.post("/cobros/no_cobrar_hoy")
 def no_cobrar_hoy(
@@ -152,7 +152,6 @@ def no_cobrar_hoy(
 
     df = _load_no_cobrar()
 
-    # si ya existe para hoy, no duplica
     ya = df[
         (df["cedula"].astype(str) == cedula) &
         (df["fecha"].astype(str) == hoy)
@@ -169,6 +168,32 @@ def no_cobrar_hoy(
 
     df = pd.concat([df, pd.DataFrame([nuevo])], ignore_index=True)
     _save_no_cobrar(df)
+
+    return RedirectResponse("/cobros", status_code=303)
+
+
+# =========================
+# DESHACER NO COBRAR HOY (ELIMINAR)
+# =========================
+@router.post("/cobros/deshacer_no_cobrar_hoy")
+def deshacer_no_cobrar_hoy(
+    request: Request,
+    cedula: str = Form(...),
+):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    cedula = str(cedula).strip()
+    hoy = date.today().isoformat()
+
+    df = _load_no_cobrar()
+
+    before = len(df)
+    df = df[~((df["cedula"].astype(str) == cedula) & (df["fecha"].astype(str) == hoy))]
+
+    if len(df) != before:
+        _save_no_cobrar(df)
 
     return RedirectResponse("/cobros", status_code=303)
 
@@ -206,7 +231,6 @@ def pago_rapido(
     if valor_num <= 0:
         return RedirectResponse("/cobros", status_code=303)
 
-    # ✅ cap: nunca pagar más del saldo
     if valor_num > saldo:
         valor_num = saldo
 
@@ -254,7 +278,6 @@ def ver_cobros(request: Request):
     clientes = _load_clientes()
     pagos = _load_pagos()
 
-    # lista negra de hoy
     no_cobrar_df = _load_no_cobrar()
     omitidos_hoy = set(
         no_cobrar_df[no_cobrar_df["fecha"].astype(str) == today_str]["cedula"].astype(str).tolist()
@@ -316,15 +339,12 @@ def ver_cobros(request: Request):
 
     df["debe"] = df.apply(debe, axis=1)
 
-    def omitido(row):
-        return str(row.get("cedula") or "") in omitidos_hoy
-
-    df["omitido_hoy"] = df.apply(omitido, axis=1)
+    df["omitido_hoy"] = df["cedula"].astype(str).isin(omitidos_hoy)
 
     def alerta(row):
         ced = str(row.get("cedula") or "")
         if ced in omitidos_hoy:
-            return False  # ✅ no aparece como alerta hoy
+            return False
 
         tipo = (row.get("tipo_cobro") or "").strip().lower()
         saldo = float(row.get("saldo") or 0)
@@ -338,7 +358,6 @@ def ver_cobros(request: Request):
 
     df["alerta"] = df.apply(alerta, axis=1)
 
-    # sugerido: min(debe, saldo)
     df["valor_sugerido"] = df.apply(
         lambda r: min(float(r.get("debe") or 0), float(r.get("saldo") or 0)),
         axis=1
@@ -346,7 +365,6 @@ def ver_cobros(request: Request):
 
     total_alertas = int(df["alerta"].sum()) if "alerta" in df.columns else 0
 
-    # orden: primero alertas reales, luego resto, y omitidos al final
     df = df.sort_values(by=["alerta", "omitido_hoy", "debe", "saldo"], ascending=[False, True, False, False])
 
     filas = df.to_dict(orient="records")
