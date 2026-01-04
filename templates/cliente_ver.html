@@ -3,74 +3,41 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h2 class="m-0">👤 Cliente</h2>
-  <div class="d-flex gap-2">
-    <a class="btn btn-secondary btn-sm" href="/clientes">⬅ Volver</a>
-    <a class="btn btn-success btn-sm" href="/pagos?cedula={{ cliente.cedula }}">➕ Registrar pago</a>
-  </div>
-</div>
-
-<div class="card p-3 mb-3">
-  <div class="row g-3">
-    <div class="col-md-4">
-      <div class="text-muted">Nombre</div>
-      <div style="font-weight:800">{{ cliente.nombre }}</div>
-    </div>
-    <div class="col-md-4">
-      <div class="text-muted">Cédula</div>
-      <div style="font-weight:800">{{ cliente.cedula }}</div>
-    </div>
-    <div class="col-md-4">
-      <div class="text-muted">Teléfono</div>
-      <div style="font-weight:800">{{ cliente.telefono }}</div>
-    </div>
-
-    <div class="col-md-4">
-      <div class="text-muted">Tipo cobro</div>
-      <div style="font-weight:800">{{ cliente.tipo_cobro }}</div>
-    </div>
-    <div class="col-md-4">
-      <div class="text-muted">Préstamo</div>
-      <div style="font-weight:800">$ {{ "{:,.0f}".format(cliente.prestamo|float).replace(",", ".") }}</div>
-    </div>
-    <div class="col-md-4">
-      <div class="text-muted">Pagado</div>
-      <div style="font-weight:800">$ {{ "{:,.0f}".format(cliente.pagado|float).replace(",", ".") }}</div>
-    </div>
-
-    <div class="col-md-4">
-      <div class="text-muted">Saldo</div>
-      <div style="font-weight:900; font-size:18px;">
-        $ {{ "{:,.0f}".format(cliente.saldo|float).replace(",", ".") }}
-      </div>
-    </div>
-  </div>
+  <a class="btn btn-secondary btn-sm" href="/clientes">⬅ Volver</a>
 </div>
 
 <div class="card p-3">
-  <h5 class="mb-3">📄 Pagos del cliente</h5>
+  <div class="row g-3">
+    <div class="col-md-6">
+      <div class="text-muted">Nombre</div>
+      <div class="fs-5 fw-bold">{{ cliente.nombre }}</div>
+    </div>
 
-  <table class="table table-bordered bg-white m-0">
-    <thead>
-      <tr>
-        <th>Fecha</th>
-        <th>Valor</th>
-        <th>Tipo cobro</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% if pagos|length == 0 %}
-        <tr><td colspan="3" class="text-center">Este cliente no tiene pagos</td></tr>
-      {% endif %}
+    <div class="col-md-6">
+      <div class="text-muted">Cédula</div>
+      <div class="fs-5 fw-bold">{{ cliente.cedula }}</div>
+    </div>
 
-      {% for p in pagos %}
-      <tr>
-        <td>{{ p["fecha"] }}</td>
-        <td>$ {{ "{:,.0f}".format(p["valor"]|float).replace(",", ".") }}</td>
-        <td>{{ p["tipo_cobro"] }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+    <div class="col-md-6">
+      <div class="text-muted">Teléfono</div>
+      <div class="fs-5 fw-bold">{{ cliente.telefono }}</div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="text-muted">Tipo de cobro</div>
+      <div class="fs-5 fw-bold text-uppercase">{{ cliente.tipo_cobro }}</div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="text-muted">Monto (préstamo)</div>
+      <div class="fs-5 fw-bold">$ {{ "{:,.0f}".format(cliente.monto|float).replace(",", ".") }}</div>
+    </div>
+  </div>
+
+  <div class="mt-3 d-flex gap-2">
+    <a class="btn btn-success" href="/pagos?cedula={{ cliente.cedula }}">💵 Ver pagos</a>
+    <a class="btn btn-primary" href="/pagos">Registrar pago</a>
+  </div>
 </div>
 
 {% endblock %}
