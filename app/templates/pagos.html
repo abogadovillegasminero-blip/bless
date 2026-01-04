@@ -4,7 +4,6 @@
 <h2>Registrar Pago</h2>
 
 <form method="post" action="/pagos/guardar" class="card p-3 mb-4">
-
   <div class="mb-3">
     <label>Cliente</label>
     <select name="cedula" class="form-control" required>
@@ -42,7 +41,7 @@
             <th>Fecha</th>
             <th>Valor</th>
             <th>Tipo cobro</th>
-            <th>Acción</th>
+            <th style="width:200px;">Acciones</th>
           </tr>
         </thead>
         <tbody>
@@ -53,13 +52,17 @@
               <td>{{ p['fecha'] }}</td>
               <td>{{ p['valor'] }}</td>
               <td>{{ p['tipo_cobro'] }}</td>
-              <td style="width:120px;">
-                <form method="post" action="/pagos/eliminar"
-                      onsubmit="return confirm('¿Eliminar este pago?');"
-                      style="margin:0;">
-                  <input type="hidden" name="row_id" value="{{ p['row_id'] }}">
-                  <button class="btn btn-danger btn-sm w-100">Eliminar</button>
-                </form>
+              <td>
+                <div class="d-flex gap-2">
+                  <a class="btn btn-warning btn-sm w-50" href="/pagos/editar?row_id={{ p['row_id'] }}">Editar</a>
+
+                  <form method="post" action="/pagos/eliminar"
+                        onsubmit="return confirm('¿Eliminar este pago?');"
+                        style="margin:0;" class="w-50">
+                    <input type="hidden" name="row_id" value="{{ p['row_id'] }}">
+                    <button class="btn btn-danger btn-sm w-100">Eliminar</button>
+                  </form>
+                </div>
               </td>
             </tr>
           {% endfor %}
