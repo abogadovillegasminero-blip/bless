@@ -11,6 +11,7 @@ from app.pagos import router as pagos_router
 from app.saldos import router as saldos_router
 from app.reportes import router as reportes_router
 from app.admin_users import router as admin_users_router
+from app.dashboard import router as dashboard_router  # ✅ NUEVO
 
 app = FastAPI()
 
@@ -41,13 +42,12 @@ def home(request: Request):
     if isinstance(user, RedirectResponse):
         return user
 
-    return templates.TemplateResponse(
-        "home.html",
-        {"request": request, "user": user}
-    )
+    # ✅ Home manda al dashboard
+    return RedirectResponse("/dashboard", status_code=302)
 
 
 app.include_router(auth_router)
+app.include_router(dashboard_router)     # ✅ NUEVO
 app.include_router(clientes_router)
 app.include_router(pagos_router)
 app.include_router(saldos_router)
