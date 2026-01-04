@@ -1,3 +1,4 @@
+import os
 import sqlite3
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -8,7 +9,10 @@ from app.auth import require_admin
 from app.security import hash_password
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
-templates = Jinja2Templates(directory="templates")
+
+# ✅ apunte robusto al folder app/templates (sin importar desde dónde arranque uvicorn)
+BASE_DIR = os.path.dirname(__file__)  # .../app
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))  # .../app/templates
 
 
 def list_users():
