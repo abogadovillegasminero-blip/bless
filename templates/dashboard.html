@@ -1,7 +1,15 @@
 {% extends "base.html" %}
 {% block content %}
 
-<h2>📊 Dashboard</h2>
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+  <h2 class="m-0">📊 Dashboard</h2>
+
+  <div class="d-flex gap-2 mt-2 mt-md-0">
+    <a href="/clientes" class="btn btn-outline-primary btn-sm">👥 Clientes</a>
+    <a href="/pagos" class="btn btn-outline-success btn-sm">💵 Pagos</a>
+    <a href="/saldos" class="btn btn-outline-dark btn-sm">📌 Saldos</a>
+  </div>
+</div>
 
 <div class="row g-3 mb-3">
   <div class="col-md-3">
@@ -39,40 +47,70 @@
   </div>
 </div>
 
-<div class="card p-3">
-  <div class="d-flex justify-content-between align-items-center mb-2">
-    <h5 class="m-0">Top saldos (mayores)</h5>
-    <a href="/saldos" class="btn btn-primary btn-sm">Ver todos</a>
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card p-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="m-0">Top saldos (mayores)</h5>
+        <a href="/saldos" class="btn btn-primary btn-sm">Ver todos</a>
+      </div>
+
+      <table class="table table-bordered bg-white m-0">
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Cédula</th>
+            <th>Saldo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if top_saldos|length == 0 %}
+            <tr><td colspan="3" class="text-center">Sin datos</td></tr>
+          {% endif %}
+
+          {% for r in top_saldos %}
+          <tr>
+            <td>{{ r["nombre"] }}</td>
+            <td>{{ r["cedula"] }}</td>
+            <td><b>$ {{ "{:,.0f}".format(r["saldo"]|float).replace(",", ".") }}</b></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 
-  <table class="table table-bordered bg-white m-0">
-    <thead>
-      <tr>
-        <th>Nombre</th>
-        <th>Cédula</th>
-        <th>Préstamo</th>
-        <th>Pagado</th>
-        <th>Saldo</th>
-        <th>Tipo</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% if top|length == 0 %}
-        <tr><td colspan="6" class="text-center">Sin datos</td></tr>
-      {% endif %}
+  <div class="col-lg-6">
+    <div class="card p-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="m-0">Últimos pagos</h5>
+        <a href="/pagos" class="btn btn-success btn-sm">Registrar / Ver</a>
+      </div>
 
-      {% for r in top %}
-      <tr>
-        <td>{{ r["nombre"] }}</td>
-        <td>{{ r["cedula"] }}</td>
-        <td>$ {{ "{:,.0f}".format(r["monto"]|float).replace(",", ".") }}</td>
-        <td>$ {{ "{:,.0f}".format(r["pagado"]|float).replace(",", ".") }}</td>
-        <td><b>$ {{ "{:,.0f}".format(r["saldo"]|float).replace(",", ".") }}</b></td>
-        <td>{{ r["tipo_cobro"] }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+      <table class="table table-bordered bg-white m-0">
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th>Fecha</th>
+            <th>Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if ultimos_pagos|length == 0 %}
+            <tr><td colspan="3" class="text-center">No hay pagos</td></tr>
+          {% endif %}
+
+          {% for p in ultimos_pagos %}
+          <tr>
+            <td>{{ p["cliente"] }}</td>
+            <td>{{ p["fecha"] }}</td>
+            <td>$ {{ "{:,.0f}".format(p["valor"]|float).replace(",", ".") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
 {% endblock %}
