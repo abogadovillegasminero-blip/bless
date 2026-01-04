@@ -3,6 +3,7 @@ import os
 import sqlite3
 from datetime import datetime
 from io import BytesIO
+from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse, StreamingResponse
@@ -14,13 +15,16 @@ from openpyxl.styles import Font
 from app.auth import require_admin
 
 router = APIRouter(prefix="/reportes", tags=["reportes"])
-templates = Jinja2Templates(directory="templates")
+
+# Ruta ABSOLUTA al folder templates (más robusto en Render)
+BASE_DIR = Path(__file__).resolve().parents[1]  # .../src
+TEMPLATES_DIR = BASE_DIR / "templates"
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 DB_PATH = os.getenv("DB_PATH", "/tmp/bless.db")
 
 
 def get_connection():
-    # timeout ayuda con locks en Render/SQLite
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
     try:
         conn.execute("PRAGMA journal_mode=WAL;")
@@ -29,16 +33,25 @@ def get_connection():
     return conn
 
 
+def _pick_template_name():
+    """
+    Render es Linux (case-sensitive).
+    Si existe reportes.html úsalo, si no, usa reporte.html.
+    """
+    if (TEMPLATES_DIR / "reportes.html").exists():
+        return "reportes.html"
+    if (TEMPLATES_DIR / "reporte.html").exists():
+        return "reporte.html"
+    # Si no existe ninguno, igual devolvemos el esperado para que el error sea claro
+    return "reportes.html"
+
+
 def _fetch_table_as_columns_and_rows(conn: sqlite3.Connection, table_name: str):
-    """
-    Lee columnas reales con PRAGMA table_info (sin inventar campos)
-    y trae todos los registros.
-    """
     cur = conn.cursor()
 
     cur.execute(f'PRAGMA table_info("{table_name}")')
     cols_info = cur.fetchall()
-    columns = [c[1] for c in cols_info]  # name
+    columns = [c[1] for c in cols_info]
 
     if not columns:
         return [], []
@@ -50,7 +63,6 @@ def _fetch_table_as_columns_and_rows(conn: sqlite3.Connection, table_name: str):
     select_cols = ", ".join([f'"{c}"' for c in columns])
     cur.execute(f'SELECT {select_cols} FROM "{table_name}"{order_clause}')
     rows = cur.fetchall()
-
     return columns, rows
 
 
@@ -71,8 +83,9 @@ def ver_reportes(request: Request):
     if isinstance(user, RedirectResponse):
         return user
 
+    tpl = _pick_template_name()
     return templates.TemplateResponse(
-        "reportes.html",
+        tpl,
         {"request": request, "user": user},
     )
 
@@ -89,9 +102,8 @@ def exportar_todo(request: Request):
         pagos_cols, pagos_rows = _fetch_table_as_columns_and_rows(conn, "pagos")
 
         wb = Workbook()
-        wb.remove(wb.active)  # quita hoja por defecto
+        wb.remove(wb.active)
 
-        # CLIENTES
         ws_clientes = wb.create_sheet("CLIENTES")
         if clientes_cols:
             ws_clientes.append(clientes_cols)
@@ -104,7 +116,6 @@ def exportar_todo(request: Request):
             ws_clientes.append(["Sin datos (tabla clientes no encontrada o sin columnas)"])
             ws_clientes["A1"].font = Font(bold=True)
 
-        # PAGOS
         ws_pagos = wb.create_sheet("PAGOS")
         if pagos_cols:
             ws_pagos.append(pagos_cols)
