@@ -1,4 +1,3 @@
-# app/reportes.py
 import os
 import sqlite3
 from datetime import datetime
@@ -33,7 +32,7 @@ def _fetch_table_as_columns_and_rows(conn: sqlite3.Connection, table_name: str):
 
     cur.execute(f'PRAGMA table_info("{table_name}")')
     cols_info = cur.fetchall()
-    columns = [c[1] for c in cols_info]  # name real
+    columns = [c[1] for c in cols_info]  # nombre real de columnas
 
     if not columns:
         return [], []
@@ -60,13 +59,12 @@ def _autosize_worksheet(ws):
         ws.column_dimensions[col_letter].width = max(10, min(max_len + 2, 60))
 
 
-@router.get("")
+@router.get("/", response_class=None)
 def ver_reportes(request: Request):
     user = require_admin(request)
     if isinstance(user, RedirectResponse):
         return user
 
-    # ✅ OJO: tu template real se llama "reporte.html" (según Render)
     return templates.TemplateResponse(
         "reporte.html",
         {"request": request, "user": user},
