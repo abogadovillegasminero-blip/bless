@@ -1,91 +1,41 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Reportes - Bless</title>
+  <meta charset="utf-8">
+  <title>Reportes - BLESS</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body{
-      font-family: "Segoe UI", Arial, sans-serif;
-      background: linear-gradient(135deg, #1e3c72, #2a5298);
-      min-height: 100vh;
-      margin: 0;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      padding: 20px;
+    body { font-family: Arial, sans-serif; background:#f5f7fb; margin:0; }
+    .wrap { max-width: 900px; margin: 30px auto; background:#fff; padding:20px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.08); }
+    h2 { margin:0 0 10px 0; }
+    .btn {
+      display:inline-block; padding:12px 16px; background:#2c7be5; color:#fff;
+      text-decoration:none; border-radius:10px; font-weight:700;
     }
-    .card{
-      width: 520px;
-      background:#fff;
-      border-radius: 16px;
-      box-shadow: 0 20px 40px rgba(0,0,0,.2);
-      padding: 24px;
-    }
-    h2{
-      margin: 0 0 10px 0;
-      color:#1e3c72;
-      text-align:center;
-    }
-    .sub{
-      text-align:center;
-      color:#555;
-      margin-bottom: 18px;
-      font-size: 14px;
-    }
-    .btn{
-      display:flex;
-      justify-content:center;
-      align-items:center;
-      padding: 14px;
-      margin: 10px 0;
-      border-radius: 10px;
-      text-decoration:none;
-      color:#fff;
-      font-weight: 700;
-      background: #6f42c1;
-      transition: all .2s ease;
-    }
-    .btn:hover{
-      transform: translateY(-2px);
-      filter: brightness(.95);
-    }
-    .btn.secondary{ background:#2c7be5; }
-    .btn.back{ background:#dc3545; }
-    .note{
-      margin-top: 12px;
-      font-size: 13px;
-      color:#444;
-      background:#f6f7fb;
-      border-radius: 10px;
-      padding: 12px;
-      line-height: 1.35;
-    }
-    code{background:#eee; padding:2px 6px; border-radius:6px;}
+    .btn:hover { background:#1a5dc9; }
+    .top { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+    .muted { color:#666; font-size:14px; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h2>📈 Reportes</h2>
-    <div class="sub">
-      Usuario: <b>{{ user.username }}</b> — Rol: <b>{{ user.role }}</b>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <h2>📈 Reportes</h2>
+        <div class="muted">Usuario: <b>{{ user.username }}</b></div>
+      </div>
+
+      <!-- ✅ ESTA ES LA RUTA CORRECTA -->
+      <a class="btn" href="/reportes/exportar-todo">⬇ Exportar TODO (Clientes + Pagos)</a>
     </div>
 
-    <!-- ✅ EXPORTA TODAS LAS TABLAS -->
-    <a class="btn" href="/reportes/exportar-todo">⬇️ Exportar TODO (Excel)</a>
+    <hr>
 
-    <!-- ✅ EXPORT CLÁSICO: CLIENTES + PAGOS -->
-    <a class="btn secondary" href="/reportes/exportar-clientes-pagos">⬇️ Exportar Clientes + Pagos</a>
+    <p class="muted">
+      Este botón descarga un Excel con dos hojas: <b>CLIENTES</b> y <b>PAGOS</b>.
+    </p>
 
-    <div class="note">
-      <b>Notas:</b><br>
-      • <b>Exportar TODO</b> crea 1 hoja por tabla (backup completo).<br>
-      • <b>Clientes + Pagos</b> crea 2 hojas (CLIENTES y PAGOS).<br>
-      • Si estás en Render, el archivo se descarga directo al celular/PC.<br>
-      • Si te pide login, entra primero a <code>/login</code>.
-    </div>
-
-    <a class="btn back" href="/">⬅️ Volver al menú</a>
+    <p><a href="/" class="btn" style="background:#6f42c1;">⬅ Volver al menú</a></p>
   </div>
 </body>
 </html>
