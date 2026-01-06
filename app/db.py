@@ -1,13 +1,24 @@
 # app/db.py
 import os
 import sqlite3
-from typing import Optional
 
 DB_PATH = os.getenv("DB_PATH", "/tmp/bless.db")
 
 
 def get_connection():
     return sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, col_type: str):
+    """
+    Agrega una columna si no existe (SQLite no tiene IF NOT EXISTS en ADD COLUMN en versiones viejas).
+    """
+    cur = conn.cursor()
+    cur.execute(f'PRAGMA table_info("{table}")')
+    cols = [row[1] for row in cur.fetchall()]  # row[1] = name
+    if column not in cols:
+        cur.execute(f'ALTER TABLE "{table}" ADD COLUMN "{column}" {col_type}')
+        conn.commit()
 
 
 def init_db():
@@ -24,7 +35,7 @@ def init_db():
     )
     """)
 
-    # Tabla clientes (si no existe)
+    # Tabla clientes
     cur.execute("""
     CREATE TABLE IF NOT EXISTS clientes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,7 +48,7 @@ def init_db():
     )
     """)
 
-    # Tabla pagos (si no existe)
+    # Tabla pagos
     cur.execute("""
     CREATE TABLE IF NOT EXISTS pagos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -50,6 +61,14 @@ def init_db():
     """)
 
     conn.commit()
+
+    # ✅ Migración segura: si tu código guarda created_at, la tabla debe tenerla
+    try:
+        _ensure_column(conn, "clientes", "created_at", "TEXT")
+    except Exception:
+        # Si por algún motivo falla, NO tumbes el arranque.
+        pass
+
     conn.close()
 
 
@@ -79,9 +98,7 @@ def ensure_admin(username: str, password: str):
 
 def migrate_excel_to_sqlite(*args, **kwargs):
     """
-    ✅ FUNCIÓN DE SEGURIDAD PARA QUE RENDER NO SE CAIGA.
-
-    Si en algún momento en main.py la importas, Render no fallará por ImportError.
-    Hoy NO es necesaria para correr Bless, así que solo deja esto como 'placeholder'.
+    ✅ Placeholder de seguridad para que Render NO se caiga si alguien lo importa.
+    Hoy no es necesario para correr Bless.
     """
     return
