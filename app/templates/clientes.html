@@ -1,60 +1,79 @@
-{% extends "base.html" %}
-{% block content %}
-<a href="/">⬅ Volver</a>
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Clientes - BLESS</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f6f7fb; margin:0; }
+    .wrap { max-width: 1100px; margin: 30px auto; padding: 0 16px; }
+    .card { background:#fff; border-radius:12px; padding:16px; box-shadow:0 8px 20px rgba(0,0,0,.06); }
+    h2 { margin:0 0 12px 0; }
+    form { display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:16px; }
+    input, textarea { width:100%; padding:10px; border:1px solid #ddd; border-radius:10px; }
+    textarea { grid-column: 1 / -1; min-height: 80px; }
+    button { padding:10px 14px; border:0; border-radius:10px; background:#2c7be5; color:#fff; font-weight:700; cursor:pointer; }
+    table { width:100%; border-collapse: collapse; }
+    th, td { padding:10px; border-bottom:1px solid #eee; text-align:left; }
+    .actions a { color:#d00; text-decoration:none; font-weight:700; }
+    .top { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    .top a { text-decoration:none; font-weight:700; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="top">
+        <h2>Clientes</h2>
+        <div>
+          <span style="color:#555;">Usuario: <b>{{ user.username }}</b></span>
+          &nbsp;|&nbsp;
+          <a href="/">Inicio</a>
+        </div>
+      </div>
 
-<h2>Clientes</h2>
+      <form method="post" action="/clientes/crear">
+        <input name="nombre" placeholder="Nombre *" required />
+        <input name="documento" placeholder="Documento" />
+        <input name="telefono" placeholder="Teléfono" />
+        <input name="codigo_postal" placeholder="Código postal" />
+        <input name="direccion" placeholder="Dirección" style="grid-column: 1 / -1;" />
+        <textarea name="observaciones" placeholder="Observaciones"></textarea>
+        <div style="grid-column: 1 / -1;">
+          <button type="submit">Guardar cliente</button>
+        </div>
+      </form>
 
-<form method="post" action="/clientes/guardar" class="card p-3 mb-4">
-  <div class="row">
-    <div class="col">
-      <input name="nombre" class="form-control" placeholder="Nombre" required>
-    </div>
-    <div class="col">
-      <input name="cedula" class="form-control" placeholder="Cédula" required>
-    </div>
-    <div class="col">
-      <input name="telefono" class="form-control" placeholder="Teléfono" required>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Nombre</th>
+            <th>Documento</th>
+            <th>Teléfono</th>
+            <th>CP</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in clientes %}
+          <tr>
+            <td>{{ c["id"] }}</td>
+            <td>{{ c["nombre"] }}</td>
+            <td>{{ c["documento"] }}</td>
+            <td>{{ c["telefono"] }}</td>
+            <td>{{ c["codigo_postal"] }}</td>
+            <td class="actions">
+              <a href="/clientes/eliminar/{{ c['id'] }}" onclick="return confirm('¿Eliminar cliente?')">Eliminar</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" style="color:#777;">No hay clientes.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
     </div>
   </div>
-
-  <div class="row mt-3">
-    <div class="col">
-      <input name="monto" type="number" class="form-control" placeholder="Monto" required>
-    </div>
-    <div class="col">
-      <select name="tipo_cobro" class="form-control" required>
-        <option value="">Tipo de cobro</option>
-        <option value="diario">Diario</option>
-        <option value="semanal">Semanal</option>
-      </select>
-    </div>
-    <div class="col">
-      <button class="btn btn-primary w-100">Guardar</button>
-    </div>
-  </div>
-</form>
-
-<table class="table table-bordered">
-  <thead>
-    <tr>
-      <th>Nombre</th>
-      <th>Cédula</th>
-      <th>Teléfono</th>
-      <th>Monto</th>
-      <th>Tipo cobro</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for c in clientes %}
-    <tr>
-      <td>{{ c.nombre }}</td>
-      <td>{{ c.cedula }}</td>
-      <td>{{ c.telefono }}</td>
-      <td>{{ c.monto }}</td>
-      <td>{{ c.tipo_cobro }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-
-{% endblock %}
+</body>
+</html>
