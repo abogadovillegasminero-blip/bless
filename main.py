@@ -4,7 +4,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
-from app.db import init_db, ensure_admin
+from app.db import init_db, ensure_admin  # ✅ sin error
 from app.auth import router as auth_router, require_user
 from app.clientes import router as clientes_router
 from app.pagos import router as pagos_router
@@ -25,10 +25,12 @@ def startup_event():
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     error = request.query_params.get("error")
     return templates.TemplateResponse("login.html", {"request": request, "error": error})
+
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
@@ -119,9 +121,13 @@ def home(request: Request):
     </html>
     """
 
+# Routers normales
 app.include_router(auth_router)
 app.include_router(clientes_router)
 app.include_router(pagos_router)
 app.include_router(saldos_router)
 app.include_router(reportes_router)
 app.include_router(admin_users_router)
+
+# ✅ Alias para que también funcione /admin/reportes/... (evita 404 si alguien lo usa)
+app.include_router(reportes_router, prefix="/admin")
