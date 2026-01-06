@@ -62,6 +62,8 @@ def crear_cliente(
     conn = get_connection()
     try:
         cur = conn.cursor()
+
+        # created_at ✅ (init_db ya asegura que la columna exista)
         cur.execute(
             """
             INSERT INTO clientes (nombre, documento, telefono, direccion, codigo_postal, observaciones, created_at)
