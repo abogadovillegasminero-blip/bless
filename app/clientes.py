@@ -1,71 +1,101 @@
-{% extends "base.html" %}
-{% block content %}
+# app/clientes.py
+import os
+import sqlite3
+from datetime import datetime
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h2 class="m-0">📌 Saldos</h2>
-  <a class="btn btn-secondary btn-sm" href="/dashboard">⬅ Volver</a>
-</div>
+from fastapi import APIRouter, Request, Form
+from fastapi.responses import RedirectResponse
+from fastapi.templating import Jinja2Templates
 
-<div class="row g-3 mb-3">
-  <div class="col-md-4">
-    <div class="card p-3">
-      <div class="text-muted">Total prestado</div>
-      <div class="fs-4 fw-bold">$ {{ "{:,.0f}".format(totales.prestado|float).replace(",", ".") }}</div>
-    </div>
-  </div>
-  <div class="col-md-4">
-    <div class="card p-3">
-      <div class="text-muted">Total pagado</div>
-      <div class="fs-4 fw-bold">$ {{ "{:,.0f}".format(totales.pagado|float).replace(",", ".") }}</div>
-    </div>
-  </div>
-  <div class="col-md-4">
-    <div class="card p-3">
-      <div class="text-muted">Saldo total</div>
-      <div class="fs-4 fw-bold">$ {{ "{:,.0f}".format(totales.saldo|float).replace(",", ".") }}</div>
-    </div>
-  </div>
-</div>
+from app.auth import require_user
 
-<div class="card p-3">
-  <div class="table-responsive">
-    <table class="table table-bordered bg-white m-0">
-      <thead>
-        <tr>
-          <th>Cliente</th>
-          <th>Cédula</th>
-          <th>Teléfono</th>
-          <th>Monto</th>
-          <th>Pagado</th>
-          <th>Saldo</th>
-          <th>Último pago</th>
-          <th>Tipo</th>
-          <th style="width:140px;">Acción</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% if filas|length == 0 %}
-          <tr><td colspan="9" class="text-center">No hay clientes</td></tr>
-        {% endif %}
+router = APIRouter(prefix="/clientes", tags=["clientes"])
+templates = Jinja2Templates(directory="templates")
 
-        {% for r in filas %}
-        <tr>
-          <td>{{ r.nombre }}</td>
-          <td>{{ r.cedula }}</td>
-          <td>{{ r.telefono }}</td>
-          <td>$ {{ "{:,.0f}".format(r.monto|float).replace(",", ".") }}</td>
-          <td>$ {{ "{:,.0f}".format(r.pagado_total|float).replace(",", ".") }}</td>
-          <td><b>$ {{ "{:,.0f}".format(r.saldo|float).replace(",", ".") }}</b></td>
-          <td>{{ r.ultimo_pago }}</td>
-          <td>{{ r.tipo_cobro }}</td>
-          <td>
-            <a class="btn btn-sm btn-primary w-100" href="/pagos?cedula={{ r.cedula }}">Ver pagos</a>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
+DB_PATH = os.getenv("DB_PATH", "/tmp/bless.db")
 
-{% endblock %}
+
+def get_connection():
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL;")
+    except Exception:
+        pass
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+@router.get("")
+def listar_clientes(request: Request):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute('SELECT * FROM clientes ORDER BY id DESC')
+        clientes = cur.fetchall()
+    finally:
+        conn.close()
+
+    return templates.TemplateResponse(
+        "clientes.html",
+        {"request": request, "user": user, "clientes": clientes},
+    )
+
+
+@router.post("/crear")
+def crear_cliente(
+    request: Request,
+    nombre: str = Form(...),
+    documento: str = Form(""),
+    telefono: str = Form(""),
+    direccion: str = Form(""),
+    codigo_postal: str = Form(""),
+    observaciones: str = Form(""),
+):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO clientes (nombre, documento, telefono, direccion, codigo_postal, observaciones, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                nombre.strip(),
+                documento.strip(),
+                telefono.strip(),
+                direccion.strip(),
+                codigo_postal.strip(),
+                observaciones.strip(),
+                datetime.utcnow().isoformat(timespec="seconds"),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return RedirectResponse(url="/clientes", status_code=303)
+
+
+@router.get("/eliminar/{cliente_id}")
+def eliminar_cliente(request: Request, cliente_id: int):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM clientes WHERE id = ?", (cliente_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return RedirectResponse(url="/clientes", status_code=303)
