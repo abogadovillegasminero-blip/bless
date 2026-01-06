@@ -1,43 +1,33 @@
-{% extends "base.html" %}
-{% block content %}
-
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h2 class="m-0">👤 Cliente</h2>
-  <a class="btn btn-secondary btn-sm" href="/clientes">⬅ Volver</a>
-</div>
-
-<div class="card p-3">
-  <div class="row g-3">
-    <div class="col-md-6">
-      <div class="text-muted">Nombre</div>
-      <div class="fs-5 fw-bold">{{ cliente.nombre }}</div>
-    </div>
-
-    <div class="col-md-6">
-      <div class="text-muted">Cédula</div>
-      <div class="fs-5 fw-bold">{{ cliente.cedula }}</div>
-    </div>
-
-    <div class="col-md-6">
-      <div class="text-muted">Teléfono</div>
-      <div class="fs-5 fw-bold">{{ cliente.telefono }}</div>
-    </div>
-
-    <div class="col-md-6">
-      <div class="text-muted">Tipo de cobro</div>
-      <div class="fs-5 fw-bold text-uppercase">{{ cliente.tipo_cobro }}</div>
-    </div>
-
-    <div class="col-md-6">
-      <div class="text-muted">Monto (préstamo)</div>
-      <div class="fs-5 fw-bold">$ {{ "{:,.0f}".format(cliente.monto|float).replace(",", ".") }}</div>
-    </div>
-  </div>
-
-  <div class="mt-3 d-flex gap-2">
-    <a class="btn btn-success" href="/pagos?cedula={{ cliente.cedula }}">💵 Ver pagos</a>
-    <a class="btn btn-primary" href="/pagos">Registrar pago</a>
-  </div>
-</div>
-
-{% endblock %}
+  File "/opt/render/project/python/Python-3.13.4/lib/python3.13/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/opt/render/project/python/Python-3.13.4/lib/python3.13/asyncio/base_events.py", line 725, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/server.py", line 71, in serve
+    await self._serve(sockets)
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/server.py", line 78, in _serve
+    config.load()
+    ~~~~~~~~~~~^^
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/config.py", line 439, in load
+    self.loaded_app = import_from_string(self.app)
+                      ~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/importer.py", line 19, in import_from_string
+    module = importlib.import_module(module_str)
+  File "/opt/render/project/python/Python-3.13.4/lib/python3.13/importlib/__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 1026, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/opt/render/project/src/main.py", line 10, in <module>
+    from app.pagos import router as pagos_router
+  File "/opt/render/project/src/app/pagos.py", line 5
+    <h2 class="m-0">👤 Cliente</h2>
+                    ^
+SyntaxError: invalid character '👤' (U+1F464)
+==> Running 'uvicorn main:app --host 0.0.0.0 --port $PORT'
+==> Running 'uvicorn main:app --host 0.0.0.0 --port $PORT'
