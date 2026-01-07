@@ -7,7 +7,7 @@ from fastapi import APIRouter, Request, Form
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.auth import require_user
+from app.auth import require_user, require_admin
 
 router = APIRouter(prefix="/clientes", tags=["clientes"])
 templates = Jinja2Templates(directory="templates")
@@ -62,8 +62,6 @@ def crear_cliente(
     conn = get_connection()
     try:
         cur = conn.cursor()
-
-        # created_at ✅ (init_db ya asegura que la columna exista)
         cur.execute(
             """
             INSERT INTO clientes (nombre, documento, telefono, direccion, codigo_postal, observaciones, created_at)
@@ -88,7 +86,8 @@ def crear_cliente(
 
 @router.get("/eliminar/{cliente_id}")
 def eliminar_cliente(request: Request, cliente_id: int):
-    user = require_user(request)
+    # ✅ SOLO ADMIN (porque borra cliente)
+    user = require_admin(request)
     if isinstance(user, RedirectResponse):
         return user
 
