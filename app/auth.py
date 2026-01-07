@@ -1,3 +1,4 @@
+# app/auth.py
 import os
 from datetime import datetime, timedelta
 
@@ -83,7 +84,10 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     )
 
     response = RedirectResponse("/dashboard", status_code=302)
-    secure_flag = (request.url.scheme == "https")
+
+    # ✅ Render / proxies: usa x-forwarded-proto para saber si afuera es https
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    secure_flag = (proto == "https")
 
     response.set_cookie(
         key="token",
@@ -97,8 +101,9 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     return response
 
 
-def _redirect_login_clear_cookie():
-    resp = RedirectResponse("/login?error=1", status_code=302)
+def _redirect_login_clear_cookie(show_error: bool = False):
+    url = "/login?error=1" if show_error else "/login"
+    resp = RedirectResponse(url, status_code=302)
     resp.delete_cookie("token", path="/")
     return resp
 
@@ -106,7 +111,7 @@ def _redirect_login_clear_cookie():
 def get_current_user(request: Request):
     token = request.cookies.get("token")
     if not token:
-        return _redirect_login_clear_cookie()
+        return _redirect_login_clear_cookie(show_error=False)
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -114,16 +119,16 @@ def get_current_user(request: Request):
         role = payload.get("role")
 
         if not username:
-            return _redirect_login_clear_cookie()
+            return _redirect_login_clear_cookie(show_error=False)
 
         db_user = get_user_by_username(username)
         if not db_user:
-            return _redirect_login_clear_cookie()
+            return _redirect_login_clear_cookie(show_error=False)
 
         return {"username": username, "role": role}
 
     except JWTError:
-        return _redirect_login_clear_cookie()
+        return _redirect_login_clear_cookie(show_error=False)
 
 
 def require_user(request: Request):
