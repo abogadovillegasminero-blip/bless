@@ -1,5 +1,5 @@
 # app/saldos.py
-from datetime import date
+from datetime import datetime, date
 
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
@@ -11,100 +11,25 @@ from app.db import get_connection
 router = APIRouter(prefix="/saldos", tags=["saldos"])
 templates = Jinja2Templates(directory="templates")
 
+INTERES_MENSUAL = 0.20
 
-def _parse_date(s: str) -> date:
-    # Espera YYYY-MM-DD
+
+def _months_elapsed(fecha_iso: str) -> int:
+    """
+    Calcula meses completos transcurridos desde fecha_iso (YYYY-MM-DD) hasta hoy.
+    Regla simple: diferencia por año/mes y si el día de hoy es menor al día del préstamo,
+    resta 1 (no se completó el mes).
+    """
     try:
-        return date.fromisoformat((s or "").strip()[:10])
+        f = datetime.strptime((fecha_iso or "").strip(), "%Y-%m-%d").date()
     except Exception:
-        return date.today()
-
-
-def _add_months(d: date, months: int) -> date:
-    y = d.year + (d.month - 1 + months) // 12
-    m = (d.month - 1 + months) % 12 + 1
-    # clamp day
-    mdays = [31, 29 if (y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    day = min(d.day, mdays[m - 1])
-    return date(y, m, day)
-
-
-def _full_months_between(d1: date, d2: date) -> int:
-    # meses completos entre d1 y d2
-    if d2 <= d1:
         return 0
-    months = (d2.year - d1.year) * 12 + (d2.month - d1.month)
-    if d2.day < d1.day:
+
+    today = date.today()
+    months = (today.year - f.year) * 12 + (today.month - f.month)
+    if today.day < f.day:
         months -= 1
-    return max(months, 0)
-
-
-class Loan:
-    __slots__ = ("principal", "interest_due", "last_interest_date", "rate")
-
-    def __init__(self, principal: float, start_date: date, rate: float):
-        self.principal = float(principal)
-        self.interest_due = 0.0
-        self.last_interest_date = start_date
-        self.rate = float(rate)
-
-    def accrue_until(self, until: date):
-        m = _full_months_between(self.last_interest_date, until)
-        if m <= 0 or self.principal <= 0:
-            return
-        # interés simple por mes sobre capital pendiente
-        self.interest_due = round(self.interest_due + (self.principal * self.rate * m), 2)
-        self.last_interest_date = _add_months(self.last_interest_date, m)
-
-
-def _compute_balance(transactions):
-    """
-    transactions: lista de dict/Row con:
-      - fecha, tipo ('prestamo'|'abono'), valor, interes_mensual
-    """
-    loans = []  # FIFO
-    for t in transactions:
-        tipo = (t["tipo"] or "abono").strip().lower()
-        fecha = _parse_date(t["fecha"] or "")
-        valor = float(t["valor"] or 0)
-        rate = float(t["interes_mensual"] or 0)
-
-        if tipo == "prestamo":
-            # crear nueva deuda por el valor prestado completo
-            if rate <= 0:
-                rate = 0.20
-            loans.append(Loan(valor, fecha, rate))
-            continue
-
-        # abono: primero acumular interés hasta la fecha del abono
-        for loan in loans:
-            loan.accrue_until(fecha)
-
-        pago = valor
-
-        # pagar intereses primero (FIFO)
-        for loan in loans:
-            if pago <= 0:
-                break
-            if loan.interest_due > 0:
-                x = min(pago, loan.interest_due)
-                loan.interest_due = round(loan.interest_due - x, 2)
-                pago = round(pago - x, 2)
-
-        # luego capital (FIFO)
-        for loan in loans:
-            if pago <= 0:
-                break
-            if loan.principal > 0:
-                x = min(pago, loan.principal)
-                loan.principal = round(loan.principal - x, 2)
-                pago = round(pago - x, 2)
-
-    # saldo total
-    capital = round(sum(l.principal for l in loans), 2)
-    interes = round(sum(l.interest_due for l in loans), 2)
-    total = round(capital + interes, 2)
-    return capital, interes, total
+    return max(0, months)
 
 
 @router.get("")
@@ -116,37 +41,83 @@ def saldos_page(request: Request):
     conn = get_connection()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT id, nombre FROM clientes ORDER BY nombre ASC")
+
+        # Totales base por cliente (prestado / abonos / seguro / entregado)
+        cur.execute("""
+            SELECT
+              c.id AS cliente_id,
+              c.nombre AS nombre,
+              COALESCE(c.documento, '') AS documento,
+
+              SUM(CASE WHEN COALESCE(p.tipo,'abono')='prestamo' THEN COALESCE(p.valor,0) ELSE 0 END) AS total_prestado,
+              SUM(CASE WHEN COALESCE(p.tipo,'abono')='prestamo' THEN COALESCE(p.seguro,0) ELSE 0 END) AS total_seguro,
+              SUM(CASE WHEN COALESCE(p.tipo,'abono')='prestamo' THEN COALESCE(p.monto_entregado,0) ELSE 0 END) AS total_entregado,
+
+              SUM(CASE WHEN COALESCE(p.tipo,'abono')='abono' THEN COALESCE(p.valor,0) ELSE 0 END) AS total_abonos
+            FROM clientes c
+            LEFT JOIN pagos p ON p.cliente_id = c.id
+            GROUP BY c.id
+            ORDER BY c.nombre ASC
+        """)
         clientes = cur.fetchall()
 
-        resultados = []
+        saldos = []
         for c in clientes:
-            cid = c["id"]
-            cur.execute(
-                """
-                SELECT fecha, valor, tipo, interes_mensual
+            cliente_id = c["cliente_id"]
+
+            # Traemos TODOS los préstamos del cliente para calcular interés por meses
+            cur.execute("""
+                SELECT fecha, valor
                 FROM pagos
                 WHERE cliente_id = ?
-                ORDER BY date(fecha) ASC, id ASC
-                """,
-                (cid,),
-            )
-            tx = cur.fetchall()
-            capital, interes, total = _compute_balance(tx)
+                  AND COALESCE(tipo,'abono')='prestamo'
+                ORDER BY id ASC
+            """, (cliente_id,))
+            prestamos = cur.fetchall()
 
-            resultados.append(
-                {
-                    "cliente_id": cid,
-                    "nombre": c["nombre"],
-                    "capital": capital,
-                    "interes": interes,
-                    "total": total,
-                }
-            )
+            interes_acumulado = 0.0
+            deuda_con_interes = 0.0
+
+            for pr in prestamos:
+                fecha = pr["fecha"] or ""
+                valor = float(pr["valor"] or 0)
+                meses = _months_elapsed(fecha)
+
+                # interés simple mensual: valor * 0.20 * meses
+                interes = valor * INTERES_MENSUAL * meses
+                interes_acumulado += interes
+                deuda_con_interes += (valor + interes)
+
+            total_abonos = float(c["total_abonos"] or 0)
+            total_prestado = float(c["total_prestado"] or 0)
+            total_seguro = float(c["total_seguro"] or 0)
+            total_entregado = float(c["total_entregado"] or 0)
+
+            saldo = deuda_con_interes - total_abonos
+
+            a_favor = 0.0
+            if saldo < 0:
+                a_favor = abs(saldo)
+                saldo = 0.0
+
+            saldos.append({
+                "cliente_id": cliente_id,
+                "nombre": c["nombre"],
+                "documento": c["documento"],
+                "total_prestado": round(total_prestado, 2),
+                "interes_acumulado": round(interes_acumulado, 2),
+                "deuda_con_interes": round(deuda_con_interes, 2),
+                "total_abonos": round(total_abonos, 2),
+                "saldo": round(saldo, 2),
+                "a_favor": round(a_favor, 2),
+                "total_seguro": round(total_seguro, 2),
+                "total_entregado": round(total_entregado, 2),
+            })
+
     finally:
         conn.close()
 
     return templates.TemplateResponse(
         "saldos.html",
-        {"request": request, "user": user, "saldos": resultados},
+        {"request": request, "user": user, "saldos": saldos},
     )
