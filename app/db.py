@@ -1,151 +1,123 @@
+# app/db.py
 import os
-from datetime import datetime, timedelta
+import sqlite3
 
-from fastapi import APIRouter, Request, Form
-from fastapi.responses import RedirectResponse
-from jose import jwt, JWTError
-
-from app.db import get_connection
-from app.security import verify_password, hash_password, looks_hashed
-
-router = APIRouter()
-
-SECRET_KEY = os.getenv("SECRET_KEY", "bless_secret_key")
-ALGORITHM = "HS256"
-TOKEN_HOURS = 8
+DB_PATH = os.getenv("DB_PATH", "/tmp/bless.db")
 
 
-def get_user_by_username(username: str):
+def get_connection():
+    return sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, col_type: str):
+    """
+    Agrega una columna si no existe.
+    """
+    cur = conn.cursor()
+    cur.execute(f'PRAGMA table_info("{table}")')
+    cols = [row[1] for row in cur.fetchall()]
+    if column not in cols:
+        cur.execute(f'ALTER TABLE "{table}" ADD COLUMN "{column}" {col_type}')
+        conn.commit()
+
+
+def init_db():
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute(
-        "SELECT id, username, password, role FROM usuarios WHERE username = ?",
-        (username,),
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'user'
     )
-    row = cur.fetchone()
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS clientes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL,
+        documento TEXT,
+        telefono TEXT,
+        direccion TEXT,
+        codigo_postal TEXT,
+        observaciones TEXT
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS pagos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cliente_id INTEGER,
+        fecha TEXT,
+        valor REAL,
+        nota TEXT,
+        FOREIGN KEY(cliente_id) REFERENCES clientes(id)
+    )
+    """)
+
+    conn.commit()
+
+    # Si tu código inserta created_at, esta columna debe existir
+    try:
+        _ensure_column(conn, "clientes", "created_at", "TEXT")
+    except Exception:
+        pass
+
     conn.close()
 
-    if not row:
-        return None
 
-    return {
-        "id": row["id"],
-        "username": row["username"],
-        "password": row["password"],
-        "role": row["role"],
-    }
+def ensure_admin(username: str, password: str):
+    """
+    ✅ Admin 'blindado':
+    - Si NO existe: lo crea con rol admin
+    - Si YA existe: fuerza rol=admin y sincroniza password desde ENV
+    Guarda la password hasheada (más seguro) y compatible con tu auth.py.
+    """
+    if not username or not password:
+        return
 
+    # Intentar hashear (recomendado). Si algo falla, cae a texto plano.
+    try:
+        from app.security import hash_password  # debe existir en tu proyecto
+        password_to_store = hash_password(password)
+    except Exception:
+        password_to_store = password
 
-def upgrade_password_to_hash(user_id: int, new_hashed: str):
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("UPDATE usuarios SET password = ? WHERE id = ?", (new_hashed, user_id))
+
+    # UPSERT (si tu SQLite lo soporta). Si no, hacemos fallback.
+    try:
+        cur.execute("""
+        INSERT INTO usuarios (username, password, role)
+        VALUES (?, ?, 'admin')
+        ON CONFLICT(username) DO UPDATE SET
+            password = excluded.password,
+            role = 'admin'
+        """, (username, password_to_store))
+    except sqlite3.OperationalError:
+        # Fallback: update/insert clásico
+        cur.execute("SELECT id FROM usuarios WHERE username = ?", (username,))
+        row = cur.fetchone()
+        if row:
+            cur.execute(
+                "UPDATE usuarios SET password = ?, role = 'admin' WHERE username = ?",
+                (password_to_store, username),
+            )
+        else:
+            cur.execute(
+                "INSERT INTO usuarios (username, password, role) VALUES (?, ?, 'admin')",
+                (username, password_to_store),
+            )
+
     conn.commit()
     conn.close()
 
 
-def authenticate_user(username: str, plain_password: str):
-    user = get_user_by_username(username)
-    if not user:
-        return None
-
-    stored = user["password"]
-
-    # Caso 1: ya está hasheada
-    if looks_hashed(stored):
-        if verify_password(plain_password, stored):
-            return {"id": user["id"], "username": user["username"], "role": user["role"]}
-        return None
-
-    # Caso 2: legado en texto plano (compatibilidad)
-    if plain_password == stored:
-        new_hashed = hash_password(plain_password)
-        upgrade_password_to_hash(user["id"], new_hashed)
-        return {"id": user["id"], "username": user["username"], "role": user["role"]}
-
-    return None
-
-
-@router.post("/login")
-def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    user = authenticate_user(username, password)
-    if not user:
-        return RedirectResponse("/login?error=1", status_code=302)
-
-    token = jwt.encode(
-        {
-            "sub": user["username"],
-            "role": user["role"],
-            "exp": datetime.utcnow() + timedelta(hours=TOKEN_HOURS),
-        },
-        SECRET_KEY,
-        algorithm=ALGORITHM,
-    )
-
-    response = RedirectResponse("/dashboard", status_code=302)
-    secure_flag = (request.url.scheme == "https")
-
-    response.set_cookie(
-        key="token",
-        value=token,
-        httponly=True,
-        samesite="lax",
-        secure=secure_flag,
-        max_age=TOKEN_HOURS * 60 * 60,
-        path="/",
-    )
-    return response
-
-
-def _redirect_login_clear_cookie():
-    resp = RedirectResponse("/login?error=1", status_code=302)
-    resp.delete_cookie("token", path="/")
-    return resp
-
-
-def get_current_user(request: Request):
-    token = request.cookies.get("token")
-    if not token:
-        return _redirect_login_clear_cookie()
-
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username = payload.get("sub")
-        role = payload.get("role")
-
-        if not username:
-            return _redirect_login_clear_cookie()
-
-        db_user = get_user_by_username(username)
-        if not db_user:
-            return _redirect_login_clear_cookie()
-
-        return {"username": username, "role": role}
-
-    except JWTError:
-        return _redirect_login_clear_cookie()
-
-
-def require_user(request: Request):
-    user = get_current_user(request)
-    if isinstance(user, RedirectResponse):
-        return user
-    return user
-
-
-def require_admin(request: Request):
-    user = get_current_user(request)
-    if isinstance(user, RedirectResponse):
-        return user
-
-    if user.get("role") != "admin":
-        return RedirectResponse("/dashboard", status_code=302)
-
-    return user
-
-
-@router.get("/logout")
-def logout():
-    response = RedirectResponse("/login", status_code=302)
-    response.delete_cookie("token", path="/")
-    return response
+def migrate_excel_to_sqlite(*args, **kwargs):
+    """
+    Placeholder de seguridad para que Render NO se caiga si alguien lo importa.
+    """
+    return
