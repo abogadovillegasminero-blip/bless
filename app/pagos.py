@@ -1,33 +1,108 @@
-  File "/opt/render/project/python/Python-3.13.4/lib/python3.13/asyncio/runners.py", line 118, in run
-    return self._loop.run_until_complete(task)
-           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
-  File "/opt/render/project/python/Python-3.13.4/lib/python3.13/asyncio/base_events.py", line 725, in run_until_complete
-    return future.result()
-           ~~~~~~~~~~~~~^^
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/server.py", line 71, in serve
-    await self._serve(sockets)
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/server.py", line 78, in _serve
-    config.load()
-    ~~~~~~~~~~~^^
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/config.py", line 439, in load
-    self.loaded_app = import_from_string(self.app)
-                      ~~~~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/importer.py", line 19, in import_from_string
-    module = importlib.import_module(module_str)
-  File "/opt/render/project/python/Python-3.13.4/lib/python3.13/importlib/__init__.py", line 88, in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
-  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
-  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
-  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
-  File "<frozen importlib._bootstrap_external>", line 1026, in exec_module
-  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
-  File "/opt/render/project/src/main.py", line 10, in <module>
-    from app.pagos import router as pagos_router
-  File "/opt/render/project/src/app/pagos.py", line 5
-    <h2 class="m-0">👤 Cliente</h2>
-                    ^
-SyntaxError: invalid character '👤' (U+1F464)
-==> Running 'uvicorn main:app --host 0.0.0.0 --port $PORT'
-==> Running 'uvicorn main:app --host 0.0.0.0 --port $PORT'
+# app/pagos.py
+# -*- coding: utf-8 -*-
+import os
+import sqlite3
+from datetime import datetime
+
+from fastapi import APIRouter, Request, Form
+from fastapi.responses import RedirectResponse
+from fastapi.templating import Jinja2Templates
+
+from app.auth import require_user
+
+router = APIRouter(prefix="/pagos", tags=["pagos"])
+templates = Jinja2Templates(directory="templates")
+
+DB_PATH = os.getenv("DB_PATH", "/tmp/bless.db")
+
+
+def get_connection():
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL;")
+    except Exception:
+        pass
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+@router.get("")
+def listar_pagos(request: Request):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+
+        # clientes para el <select>
+        cur.execute('SELECT id, nombre FROM clientes ORDER BY nombre ASC')
+        clientes = cur.fetchall()
+
+        # pagos + nombre del cliente
+        cur.execute("""
+            SELECT p.id, p.cliente_id, p.fecha, p.valor, p.nota,
+                   c.nombre AS cliente_nombre
+            FROM pagos p
+            LEFT JOIN clientes c ON c.id = p.cliente_id
+            ORDER BY p.id DESC
+        """)
+        pagos = cur.fetchall()
+    finally:
+        conn.close()
+
+    return templates.TemplateResponse(
+        "pagos.html",
+        {"request": request, "user": user, "clientes": clientes, "pagos": pagos},
+    )
+
+
+@router.post("/crear")
+def crear_pago(
+    request: Request,
+    cliente_id: int = Form(...),
+    fecha: str = Form(""),
+    valor: float = Form(...),
+    nota: str = Form(""),
+):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    fecha_final = (fecha or "").strip()
+    if not fecha_final:
+        fecha_final = datetime.utcnow().strftime("%Y-%m-%d")
+
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO pagos (cliente_id, fecha, valor, nota)
+            VALUES (?, ?, ?, ?)
+            """,
+            (int(cliente_id), fecha_final, float(valor), (nota or "").strip()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return RedirectResponse(url="/pagos", status_code=303)
+
+
+@router.get("/eliminar/{pago_id}")
+def eliminar_pago(request: Request, pago_id: int):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM pagos WHERE id = ?", (int(pago_id),))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return RedirectResponse(url="/pagos", status_code=303)
