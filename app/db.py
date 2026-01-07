@@ -6,7 +6,15 @@ DB_PATH = os.getenv("DB_PATH", "/tmp/bless.db")
 
 
 def get_connection():
-    return sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
+    try:
+        # Mejor concurrencia/estabilidad en SQLite (Render)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
+        conn.execute("PRAGMA foreign_keys=ON;")
+    except Exception:
+        pass
+    return conn
 
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, col_type: str):
@@ -98,7 +106,7 @@ def ensure_admin(username: str, password: str):
 
 def migrate_excel_to_sqlite(*args, **kwargs):
     """
-    ✅ Placeholder de seguridad para que Render NO se caiga si alguien lo importa.
+    ✅ Placeholder de seguridad para que Render NO SE CAIGA si alguien lo importa.
     Hoy no es necesario para correr Bless.
     """
     return
