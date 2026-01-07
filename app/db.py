@@ -6,10 +6,17 @@ DB_PATH = os.getenv("DB_PATH", "/tmp/bless.db")
 
 
 def get_connection():
+    # ✅ asegura carpeta si DB_PATH está en /var/data/...
+    folder = os.path.dirname(DB_PATH)
+    if folder:
+        os.makedirs(folder, exist_ok=True)
+
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = sqlite3.Row  # ✅ para usar row["id"]
+    # ajustes sanos
     try:
-        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA foreign_keys = ON;")
+        conn.execute("PRAGMA journal_mode = WAL;")
     except Exception:
         pass
     return conn
@@ -28,7 +35,7 @@ def init_db():
     conn = get_connection()
     cur = conn.cursor()
 
-    # Tabla usuarios
+    # Usuarios
     cur.execute("""
     CREATE TABLE IF NOT EXISTS usuarios (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,7 +45,7 @@ def init_db():
     )
     """)
 
-    # Tabla clientes
+    # Clientes
     cur.execute("""
     CREATE TABLE IF NOT EXISTS clientes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,11 +54,12 @@ def init_db():
         telefono TEXT,
         direccion TEXT,
         codigo_postal TEXT,
-        observaciones TEXT
+        observaciones TEXT,
+        created_at TEXT
     )
     """)
 
-    # Tabla pagos
+    # Pagos
     cur.execute("""
     CREATE TABLE IF NOT EXISTS pagos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,19 +67,19 @@ def init_db():
         fecha TEXT,
         valor REAL,
         nota TEXT,
+        tipo TEXT,
+        seguro REAL,
+        monto_entregado REAL,
+        interes_mensual REAL,
         FOREIGN KEY(cliente_id) REFERENCES clientes(id)
     )
     """)
 
     conn.commit()
 
-    # ✅ Columnas que tu app YA usa (migración segura)
+    # Migraciones suaves por si ya existían tablas viejas
     try:
         _ensure_column(conn, "clientes", "created_at", "TEXT")
-    except Exception:
-        pass
-
-    try:
         _ensure_column(conn, "pagos", "tipo", "TEXT")
         _ensure_column(conn, "pagos", "seguro", "REAL")
         _ensure_column(conn, "pagos", "monto_entregado", "REAL")
@@ -83,11 +91,6 @@ def init_db():
 
 
 def ensure_admin(username: str, password: str):
-    """
-    Crea el admin si no existe.
-    NOTA: guarda password tal cual (sin hash) para no romper tu login.
-    Tu auth lo migra a hash al primer login.
-    """
     if not username or not password:
         return
 
@@ -108,5 +111,4 @@ def ensure_admin(username: str, password: str):
 
 
 def migrate_excel_to_sqlite(*args, **kwargs):
-    # Placeholder de seguridad para que Render no falle si lo importas
     return
