@@ -1,5 +1,7 @@
 # app/pagos.py
 from datetime import datetime
+import sqlite3
+
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -27,7 +29,13 @@ def pagos_page(request: Request):
         clientes = cur.fetchall()
 
         cur.execute("""
-            SELECT p.*, c.nombre AS cliente_nombre
+            SELECT
+              p.id, p.cliente_id, p.fecha, p.valor, p.nota,
+              COALESCE(p.tipo, 'abono') AS tipo,
+              COALESCE(p.seguro, 0) AS seguro,
+              COALESCE(p.monto_entregado, 0) AS monto_entregado,
+              COALESCE(p.interes_mensual, 0) AS interes_mensual,
+              c.nombre AS cliente_nombre
             FROM pagos p
             LEFT JOIN clientes c ON c.id = p.cliente_id
             ORDER BY p.id DESC
@@ -59,8 +67,7 @@ def crear_pago(
     if tipo not in ("abono", "prestamo"):
         tipo = "abono"
 
-    # fecha: si no llega, usamos hoy
-    if not fecha.strip():
+    if not (fecha or "").strip():
         fecha = datetime.utcnow().date().isoformat()
 
     valor = float(valor or 0)
@@ -69,30 +76,53 @@ def crear_pago(
     monto_entregado = 0.0
     interes_mensual = 0.0
 
+    # ✅ Reglas del negocio (tal como pediste)
     if tipo == "prestamo":
-        seguro = round(valor * SEGURO, 2)
-        monto_entregado = round(valor - seguro, 2)
-        interes_mensual = INTERES_MENSUAL
+        seguro = round(valor * SEGURO, 2)                 # 10% una sola vez
+        monto_entregado = round(valor - seguro, 2)        # se descuenta del dinero entregado
+        interes_mensual = INTERES_MENSUAL                 # 20% mensual
+
+        # Si no ponen nota, dejamos evidencia automática
+        if not (nota or "").strip():
+            nota = f"Préstamo: seguro 10%={seguro} | entregado={monto_entregado} | interés mensual=20%"
 
     conn = get_connection()
     try:
         cur = conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO pagos (cliente_id, fecha, valor, nota, tipo, seguro, monto_entregado, interes_mensual)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                cliente_id,
-                fecha.strip(),
-                round(valor, 2),
-                (nota or "").strip(),
-                tipo,
-                seguro,
-                monto_entregado,
-                interes_mensual,
-            ),
-        )
+
+        # ✅ Insert con columnas nuevas (si existen)
+        try:
+            cur.execute(
+                """
+                INSERT INTO pagos (cliente_id, fecha, valor, nota, tipo, seguro, monto_entregado, interes_mensual)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    cliente_id,
+                    fecha.strip(),
+                    round(valor, 2),
+                    (nota or "").strip(),
+                    tipo,
+                    seguro,
+                    monto_entregado,
+                    interes_mensual,
+                ),
+            )
+        except sqlite3.OperationalError:
+            # ✅ Fallback si por alguna razón aún no están las columnas
+            cur.execute(
+                """
+                INSERT INTO pagos (cliente_id, fecha, valor, nota)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    cliente_id,
+                    fecha.strip(),
+                    round(valor, 2),
+                    (nota or "").strip(),
+                ),
+            )
+
         conn.commit()
     finally:
         conn.close()
