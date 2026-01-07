@@ -67,7 +67,7 @@
           <th>Entregado</th>
           <th>Interés mensual</th>
           <th>Nota</th>
-          <th style="width:220px;">Acciones</th>
+          <th style="width:140px;">Acciones</th>
         </tr>
       </thead>
 
@@ -117,14 +117,13 @@
 
           <td>{{ p.nota or "" }}</td>
 
-          <td class="d-flex gap-2">
-            <a class="btn btn-warning btn-sm w-100" href="/pagos/editar/{{ p.id }}">Editar</a>
-
-            <form method="post" action="/pagos/eliminar" class="w-100"
-                  onsubmit="return confirm('¿Eliminar este movimiento?');">
-              <input type="hidden" name="pago_id" value="{{ p.id }}">
-              <button class="btn btn-danger btn-sm w-100">Eliminar</button>
-            </form>
+          <td>
+            <!-- ✅ Eliminar REAL (tu backend tiene GET /pagos/eliminar/{id}) -->
+            <a class="btn btn-danger btn-sm w-100"
+               href="/pagos/eliminar/{{ p.id }}"
+               onclick="return confirm('¿Eliminar este movimiento?');">
+              Eliminar
+            </a>
           </td>
         </tr>
         {% endfor %}
