@@ -16,6 +16,9 @@ def get_connection():
 
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, col_type: str):
+    """
+    Agrega una columna si no existe.
+    """
     cur = conn.cursor()
     cur.execute(f'PRAGMA table_info("{table}")')
     cols = [row[1] for row in cur.fetchall()]  # row[1] = name
@@ -51,7 +54,7 @@ def init_db():
     )
     """)
 
-    # Tabla pagos (ahora soporta: abonos y préstamos)
+    # Tabla pagos (base)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS pagos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,22 +68,18 @@ def init_db():
 
     conn.commit()
 
-    # Migraciones seguras
+    # ✅ Migraciones seguras (no tumban el arranque)
     try:
         _ensure_column(conn, "clientes", "created_at", "TEXT")
     except Exception:
         pass
 
-    # ✅ Nuevas columnas para préstamos/abonos
-    # tipo: 'abono' o 'prestamo'
-    # seguro: 10% (solo cuando tipo='prestamo')
-    # monto_entregado: valor - seguro (solo cuando prestamo)
-    # interes_mensual: 0.20 (solo cuando prestamo)
+    # ✅ Columnas extra para préstamos (20% mensual + 10% seguro)
     try:
-        _ensure_column(conn, "pagos", "tipo", "TEXT NOT NULL DEFAULT 'abono'")
-        _ensure_column(conn, "pagos", "seguro", "REAL NOT NULL DEFAULT 0")
-        _ensure_column(conn, "pagos", "monto_entregado", "REAL NOT NULL DEFAULT 0")
-        _ensure_column(conn, "pagos", "interes_mensual", "REAL NOT NULL DEFAULT 0")
+        _ensure_column(conn, "pagos", "tipo", "TEXT DEFAULT 'abono'")          # 'abono' o 'prestamo'
+        _ensure_column(conn, "pagos", "seguro", "REAL DEFAULT 0")             # 10% (solo préstamo)
+        _ensure_column(conn, "pagos", "monto_entregado", "REAL DEFAULT 0")    # valor - seguro (solo préstamo)
+        _ensure_column(conn, "pagos", "interes_mensual", "REAL DEFAULT 0")    # 0.20 (solo préstamo)
     except Exception:
         pass
 
@@ -90,6 +89,8 @@ def init_db():
 def ensure_admin(username: str, password: str):
     """
     Crea el admin si no existe.
+    NOTA: guarda password tal cual (texto plano) para no romper logins existentes.
+    (Tu auth.py ya hace upgrade a hash en el primer login.)
     """
     if not username or not password:
         return
@@ -97,13 +98,13 @@ def ensure_admin(username: str, password: str):
     conn = get_connection()
     cur = conn.cursor()
 
-    cur.execute("SELECT id, password, role FROM usuarios WHERE username = ?", (username,))
+    cur.execute("SELECT id FROM usuarios WHERE username = ?", (username,))
     row = cur.fetchone()
 
     if not row:
         cur.execute(
             "INSERT INTO usuarios (username, password, role) VALUES (?, ?, 'admin')",
-            (username, password),
+            (username, password)
         )
         conn.commit()
 
@@ -111,4 +112,7 @@ def ensure_admin(username: str, password: str):
 
 
 def migrate_excel_to_sqlite(*args, **kwargs):
+    """
+    Placeholder de seguridad para que Render NO se caiga si alguien lo importa.
+    """
     return
