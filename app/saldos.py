@@ -5,21 +5,18 @@ from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.auth import require_user
+from app.auth import require_admin
 from app.db import get_connection
 
 router = APIRouter(prefix="/saldos", tags=["saldos"])
 templates = Jinja2Templates(directory="templates")
 
-INTERES_MENSUAL_DEFAULT = 0.20
+INTERES_MENSUAL = 0.20
 
 
 def _months_elapsed(fecha_iso: str) -> int:
     """
     Meses completos transcurridos desde fecha_iso (YYYY-MM-DD) hasta hoy.
-    Regla simple:
-      - diferencia por año/mes
-      - si el día de hoy es menor al día del préstamo, resta 1
     """
     try:
         f = datetime.strptime((fecha_iso or "").strip(), "%Y-%m-%d").date()
@@ -35,23 +32,15 @@ def _months_elapsed(fecha_iso: str) -> int:
 
 @router.get("")
 def saldos_page(request: Request):
-    user = require_user(request)
+    # ✅ SOLO ADMIN
+    user = require_admin(request)
     if isinstance(user, RedirectResponse):
         return user
 
     conn = get_connection()
-    conn.row_factory = None  # por si tu get_connection no lo setea
     try:
-        # Asegurar row_factory tipo dict si tu app lo usa así
-        try:
-            conn.row_factory = __import__("sqlite3").Row
-        except Exception:
-            pass
-
         cur = conn.cursor()
 
-        # 1) Totales base por cliente (prestado / abonos / seguro / entregado)
-        #    Esto NO falla si faltan columnas porque usamos COALESCE y tipo por defecto.
         cur.execute("""
             SELECT
               c.id AS cliente_id,
@@ -71,37 +60,27 @@ def saldos_page(request: Request):
         clientes = cur.fetchall()
 
         saldos = []
-
         for c in clientes:
             cliente_id = c["cliente_id"]
 
-            # 2) Traemos préstamos (para interés por meses)
-            #    Usamos interes_mensual si existe; si no, la columna será NULL y cae al default.
             cur.execute("""
-                SELECT
-                  COALESCE(fecha,'') AS fecha,
-                  COALESCE(valor,0) AS valor,
-                  COALESCE(interes_mensual, ?) AS interes_mensual
+                SELECT fecha, valor
                 FROM pagos
                 WHERE cliente_id = ?
                   AND COALESCE(tipo,'abono')='prestamo'
                 ORDER BY id ASC
-            """, (INTERES_MENSUAL_DEFAULT, cliente_id))
+            """, (cliente_id,))
             prestamos = cur.fetchall()
 
             interes_acumulado = 0.0
             deuda_con_interes = 0.0
 
             for pr in prestamos:
-                fecha = (pr["fecha"] or "").strip()
+                fecha = pr["fecha"] or ""
                 valor = float(pr["valor"] or 0)
-                interes_mensual = float(pr["interes_mensual"] or INTERES_MENSUAL_DEFAULT)
-
                 meses = _months_elapsed(fecha)
 
-                # Interés simple mensual: valor * interes_mensual * meses
-                interes = valor * interes_mensual * meses
-
+                interes = valor * INTERES_MENSUAL * meses
                 interes_acumulado += interes
                 deuda_con_interes += (valor + interes)
 
@@ -110,7 +89,6 @@ def saldos_page(request: Request):
             total_seguro = float(c["total_seguro"] or 0)
             total_entregado = float(c["total_entregado"] or 0)
 
-            # Saldo final: deuda con interés - abonos
             saldo = deuda_con_interes - total_abonos
 
             a_favor = 0.0
@@ -122,24 +100,18 @@ def saldos_page(request: Request):
                 "cliente_id": cliente_id,
                 "nombre": c["nombre"],
                 "documento": c["documento"],
-
                 "total_prestado": round(total_prestado, 2),
                 "interes_acumulado": round(interes_acumulado, 2),
                 "deuda_con_interes": round(deuda_con_interes, 2),
-
                 "total_abonos": round(total_abonos, 2),
                 "saldo": round(saldo, 2),
                 "a_favor": round(a_favor, 2),
-
                 "total_seguro": round(total_seguro, 2),
                 "total_entregado": round(total_entregado, 2),
             })
 
     finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+        conn.close()
 
     return templates.TemplateResponse(
         "saldos.html",
