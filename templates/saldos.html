@@ -1,6 +1,50 @@
 {% extends "base.html" %}
 {% block content %}
 
+<style>
+  /* --- móvil: mostrar como tarjetas --- */
+  @media (max-width: 768px) {
+    .table-responsive { border: 0; }
+    table.table, thead { display: block; }
+    thead { display: none; }
+
+    table.table tbody { display: block; }
+    table.table tr {
+      display: block;
+      background: #fff;
+      border: 1px solid rgba(0,0,0,.08);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,.06);
+    }
+    table.table td {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 0;
+      border: 0 !important;
+      border-bottom: 1px dashed rgba(0,0,0,.10) !important;
+    }
+    table.table td:last-child { border-bottom: 0 !important; }
+    table.table td::before {
+      content: attr(data-label);
+      font-weight: 700;
+      color: #0d6efd;
+      min-width: 140px;
+      flex: 1;
+    }
+    table.table td .val {
+      text-align: right;
+      flex: 1;
+      font-weight: 600;
+      color: #1f2d3d;
+      word-break: break-word;
+    }
+    .saldo-strong { font-size: 18px; }
+  }
+</style>
+
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h2 class="m-0">📌 Saldos</h2>
   <a class="btn btn-secondary btn-sm" href="/dashboard">⬅ Volver</a>
@@ -30,25 +74,51 @@
 
         {% for s in saldos %}
         <tr>
-          <td>{{ s.nombre }}</td>
-          <td>{{ s.documento }}</td>
-
-          <td>$ {{ "{:,.0f}".format(s.total_prestado|float).replace(",", ".") }}</td>
-          <td>$ {{ "{:,.0f}".format(s.interes_acumulado|float).replace(",", ".") }}</td>
-          <td>$ {{ "{:,.0f}".format(s.deuda_con_interes|float).replace(",", ".") }}</td>
-          <td>$ {{ "{:,.0f}".format(s.total_abonos|float).replace(",", ".") }}</td>
-
-          <td><b>$ {{ "{:,.0f}".format(s.saldo|float).replace(",", ".") }}</b></td>
-          <td>
-            {% if (s.a_favor|float) > 0 %}
-              <span class="badge bg-success">$ {{ "{:,.0f}".format(s.a_favor|float).replace(",", ".") }}</span>
-            {% else %}
-              -
-            {% endif %}
+          <td data-label="Cliente">
+            <span class="val">{{ s.nombre }}</span>
           </td>
 
-          <td>$ {{ "{:,.0f}".format(s.total_seguro|float).replace(",", ".") }}</td>
-          <td>$ {{ "{:,.0f}".format(s.total_entregado|float).replace(",", ".") }}</td>
+          <td data-label="Documento">
+            <span class="val">{{ s.documento }}</span>
+          </td>
+
+          <td data-label="Prestado">
+            <span class="val">$ {{ "{:,.0f}".format(s.total_prestado|float).replace(",", ".") }}</span>
+          </td>
+
+          <td data-label="Interés">
+            <span class="val">$ {{ "{:,.0f}".format(s.interes_acumulado|float).replace(",", ".") }}</span>
+          </td>
+
+          <td data-label="Deuda (con interés)">
+            <span class="val">$ {{ "{:,.0f}".format(s.deuda_con_interes|float).replace(",", ".") }}</span>
+          </td>
+
+          <td data-label="Abonos">
+            <span class="val">$ {{ "{:,.0f}".format(s.total_abonos|float).replace(",", ".") }}</span>
+          </td>
+
+          <td data-label="Saldo">
+            <span class="val saldo-strong"><b>$ {{ "{:,.0f}".format(s.saldo|float).replace(",", ".") }}</b></span>
+          </td>
+
+          <td data-label="A favor">
+            <span class="val">
+              {% if (s.a_favor|float) > 0 %}
+                <span class="badge bg-success">$ {{ "{:,.0f}".format(s.a_favor|float).replace(",", ".") }}</span>
+              {% else %}
+                -
+              {% endif %}
+            </span>
+          </td>
+
+          <td data-label="Seguro (10%)">
+            <span class="val">$ {{ "{:,.0f}".format(s.total_seguro|float).replace(",", ".") }}</span>
+          </td>
+
+          <td data-label="Entregado">
+            <span class="val">$ {{ "{:,.0f}".format(s.total_entregado|float).replace(",", ".") }}</span>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
