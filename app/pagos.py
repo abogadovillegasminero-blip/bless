@@ -1,32 +1,21 @@
 # app/pagos.py
-import os
-import sqlite3
 from datetime import datetime
-
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import require_user
+from app.db import get_connection
 
 router = APIRouter(prefix="/pagos", tags=["pagos"])
 templates = Jinja2Templates(directory="templates")
 
-DB_PATH = os.getenv("DB_PATH", "/tmp/bless.db")
-
-
-def get_connection():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
-    try:
-        conn.execute("PRAGMA journal_mode=WAL;")
-    except Exception:
-        pass
-    conn.row_factory = sqlite3.Row
-    return conn
+INTERES_MENSUAL = 0.20
+SEGURO = 0.10
 
 
 @router.get("")
-def ver_pagos(request: Request):
+def pagos_page(request: Request):
     user = require_user(request)
     if isinstance(user, RedirectResponse):
         return user
@@ -34,20 +23,11 @@ def ver_pagos(request: Request):
     conn = get_connection()
     try:
         cur = conn.cursor()
-
-        # Clientes para el select
-        cur.execute('SELECT id, nombre FROM clientes ORDER BY nombre ASC')
+        cur.execute("SELECT id, nombre FROM clientes ORDER BY nombre ASC")
         clientes = cur.fetchall()
 
-        # Pagos con nombre del cliente
         cur.execute("""
-            SELECT
-                p.id,
-                p.cliente_id,
-                c.nombre AS cliente_nombre,
-                p.fecha,
-                p.valor,
-                p.nota
+            SELECT p.*, c.nombre AS cliente_nombre
             FROM pagos p
             LEFT JOIN clientes c ON c.id = p.cliente_id
             ORDER BY p.id DESC
@@ -69,29 +49,50 @@ def crear_pago(
     fecha: str = Form(""),
     valor: float = Form(...),
     nota: str = Form(""),
+    tipo: str = Form("abono"),  # 'abono' o 'prestamo'
 ):
     user = require_user(request)
     if isinstance(user, RedirectResponse):
         return user
 
-    # Si no mandan fecha, usa hoy
-    fecha_final = (fecha or "").strip()
-    if not fecha_final:
-        fecha_final = datetime.utcnow().date().isoformat()
+    tipo = (tipo or "abono").strip().lower()
+    if tipo not in ("abono", "prestamo"):
+        tipo = "abono"
+
+    # fecha: si no llega, usamos hoy
+    if not fecha.strip():
+        fecha = datetime.utcnow().date().isoformat()
+
+    valor = float(valor or 0)
+
+    seguro = 0.0
+    monto_entregado = 0.0
+    interes_mensual = 0.0
+
+    if tipo == "prestamo":
+        seguro = round(valor * SEGURO, 2)
+        monto_entregado = round(valor - seguro, 2)
+        interes_mensual = INTERES_MENSUAL
 
     conn = get_connection()
     try:
         cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO pagos (cliente_id, fecha, valor, nota, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        """, (
-            int(cliente_id),
-            fecha_final,
-            float(valor),
-            (nota or "").strip(),
-            datetime.utcnow().isoformat(timespec="seconds"),
-        ))
+        cur.execute(
+            """
+            INSERT INTO pagos (cliente_id, fecha, valor, nota, tipo, seguro, monto_entregado, interes_mensual)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                cliente_id,
+                fecha.strip(),
+                round(valor, 2),
+                (nota or "").strip(),
+                tipo,
+                seguro,
+                monto_entregado,
+                interes_mensual,
+            ),
+        )
         conn.commit()
     finally:
         conn.close()
