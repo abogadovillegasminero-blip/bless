@@ -1,37 +1,59 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="container py-4">
-  <h2 class="mb-3">Saldos</h2>
-  <p class="text-muted">Resumen por cliente: total pagado y número de pagos.</p>
 
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="m-0">📌 Saldos</h2>
+  <a class="btn btn-secondary btn-sm" href="/dashboard">⬅ Volver</a>
+</div>
+
+<div class="card p-3">
   <div class="table-responsive">
-    <table class="table table-striped align-middle">
+    <table class="table table-bordered bg-white m-0">
       <thead>
         <tr>
-          <th>ID</th>
           <th>Cliente</th>
           <th>Documento</th>
-          <th>Teléfono</th>
-          <th class="text-end"># Pagos</th>
-          <th class="text-end">Total pagado</th>
+          <th>Prestado</th>
+          <th>Interés</th>
+          <th>Deuda (con interés)</th>
+          <th>Abonos</th>
+          <th>Saldo</th>
+          <th>A favor</th>
+          <th>Seguro (10%)</th>
+          <th>Entregado</th>
         </tr>
       </thead>
       <tbody>
-        {% for r in rows %}
+        {% if saldos|length == 0 %}
+          <tr><td colspan="10" class="text-center">No hay datos</td></tr>
+        {% endif %}
+
+        {% for s in saldos %}
         <tr>
-          <td>{{ r["id"] }}</td>
-          <td>{{ r["nombre"] }}</td>
-          <td>{{ r["documento"] or "" }}</td>
-          <td>{{ r["telefono"] or "" }}</td>
-          <td class="text-end">{{ r["n_pagos"] }}</td>
-          <td class="text-end">${{ "%.2f"|format(r["total_pagado"]) }}</td>
+          <td>{{ s.nombre }}</td>
+          <td>{{ s.documento }}</td>
+
+          <td>$ {{ "{:,.0f}".format(s.total_prestado|float).replace(",", ".") }}</td>
+          <td>$ {{ "{:,.0f}".format(s.interes_acumulado|float).replace(",", ".") }}</td>
+          <td>$ {{ "{:,.0f}".format(s.deuda_con_interes|float).replace(",", ".") }}</td>
+          <td>$ {{ "{:,.0f}".format(s.total_abonos|float).replace(",", ".") }}</td>
+
+          <td><b>$ {{ "{:,.0f}".format(s.saldo|float).replace(",", ".") }}</b></td>
+          <td>
+            {% if (s.a_favor|float) > 0 %}
+              <span class="badge bg-success">$ {{ "{:,.0f}".format(s.a_favor|float).replace(",", ".") }}</span>
+            {% else %}
+              -
+            {% endif %}
+          </td>
+
+          <td>$ {{ "{:,.0f}".format(s.total_seguro|float).replace(",", ".") }}</td>
+          <td>$ {{ "{:,.0f}".format(s.total_entregado|float).replace(",", ".") }}</td>
         </tr>
         {% endfor %}
-        {% if rows|length == 0 %}
-        <tr><td colspan="6" class="text-center text-muted">Sin clientes aún.</td></tr>
-        {% endif %}
       </tbody>
     </table>
   </div>
 </div>
+
 {% endblock %}
