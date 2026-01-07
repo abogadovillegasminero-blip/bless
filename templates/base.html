@@ -9,6 +9,8 @@
   <!-- PWA -->
   <link rel="manifest" href="/static/manifest.json">
   <meta name="theme-color" content="#0d6efd">
+
+  <!-- iOS (Safari) -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
@@ -22,13 +24,6 @@
     table th { background: #0d6efd; color: white; }
   </style>
 </head>
-<script>
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("/static/sw.js").catch(() => {});
-    });
-  }
-</script>
 
 <body>
 
@@ -48,10 +43,10 @@
 </div>
 
 <script>
-  // Registrar Service Worker (PWA)
+  // PWA: Service Worker (usa SOLO este archivo)
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("/static/service-worker.js").catch(() => {});
+      navigator.serviceWorker.register("/static/sw.js").catch(() => {});
     });
   }
 </script>
