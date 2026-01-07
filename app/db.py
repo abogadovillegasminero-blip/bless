@@ -2,19 +2,16 @@
 import os
 import sqlite3
 
-from app.security import hash_password  # solo usa passlib (no hay ciclo)
-
 DB_PATH = os.getenv("DB_PATH", "/tmp/bless.db")
 
 
 def get_connection():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
-    # Para poder usar row["campo"]
-    conn.row_factory = sqlite3.Row
     try:
         conn.execute("PRAGMA journal_mode=WAL;")
     except Exception:
         pass
+    conn.row_factory = sqlite3.Row
     return conn
 
 
@@ -31,7 +28,7 @@ def init_db():
     conn = get_connection()
     cur = conn.cursor()
 
-    # Usuarios
+    # Tabla usuarios
     cur.execute("""
     CREATE TABLE IF NOT EXISTS usuarios (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,7 +38,7 @@ def init_db():
     )
     """)
 
-    # Clientes
+    # Tabla clientes
     cur.execute("""
     CREATE TABLE IF NOT EXISTS clientes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,7 +51,7 @@ def init_db():
     )
     """)
 
-    # Pagos
+    # Tabla pagos (ahora soporta: abonos y préstamos)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS pagos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,14 +65,22 @@ def init_db():
 
     conn.commit()
 
-    # Migraciones seguras (no tumbar el arranque)
+    # Migraciones seguras
     try:
         _ensure_column(conn, "clientes", "created_at", "TEXT")
     except Exception:
         pass
 
+    # ✅ Nuevas columnas para préstamos/abonos
+    # tipo: 'abono' o 'prestamo'
+    # seguro: 10% (solo cuando tipo='prestamo')
+    # monto_entregado: valor - seguro (solo cuando prestamo)
+    # interes_mensual: 0.20 (solo cuando prestamo)
     try:
-        _ensure_column(conn, "pagos", "created_at", "TEXT")
+        _ensure_column(conn, "pagos", "tipo", "TEXT NOT NULL DEFAULT 'abono'")
+        _ensure_column(conn, "pagos", "seguro", "REAL NOT NULL DEFAULT 0")
+        _ensure_column(conn, "pagos", "monto_entregado", "REAL NOT NULL DEFAULT 0")
+        _ensure_column(conn, "pagos", "interes_mensual", "REAL NOT NULL DEFAULT 0")
     except Exception:
         pass
 
@@ -84,8 +89,7 @@ def init_db():
 
 def ensure_admin(username: str, password: str):
     """
-    Crea/actualiza admin desde ENV en cada startup.
-    Guarda password hasheada para que SIEMPRE sirva el login.
+    Crea el admin si no existe.
     """
     if not username or not password:
         return
@@ -93,22 +97,18 @@ def ensure_admin(username: str, password: str):
     conn = get_connection()
     cur = conn.cursor()
 
-    cur.execute("SELECT id FROM usuarios WHERE username = ?", (username,))
+    cur.execute("SELECT id, password, role FROM usuarios WHERE username = ?", (username,))
     row = cur.fetchone()
-
-    hashed = hash_password(password)
 
     if not row:
         cur.execute(
             "INSERT INTO usuarios (username, password, role) VALUES (?, ?, 'admin')",
-            (username, hashed),
+            (username, password),
         )
-    else:
-        # fuerza rol admin + actualiza password al valor de ENV
-        cur.execute(
-            "UPDATE usuarios SET password = ?, role = 'admin' WHERE username = ?",
-            (hashed, username),
-        )
+        conn.commit()
 
-    conn.commit()
     conn.close()
+
+
+def migrate_excel_to_sqlite(*args, **kwargs):
+    return
