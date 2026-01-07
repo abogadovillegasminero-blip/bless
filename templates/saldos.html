@@ -1,71 +1,37 @@
 {% extends "base.html" %}
 {% block content %}
+<div class="container py-4">
+  <h2 class="mb-3">Saldos</h2>
+  <p class="text-muted">Resumen por cliente: total pagado y número de pagos.</p>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h2 class="m-0">📌 Saldos</h2>
-  <a class="btn btn-secondary btn-sm" href="/dashboard">⬅ Volver</a>
-</div>
-
-<div class="row g-3 mb-3">
-  <div class="col-md-4">
-    <div class="card p-3">
-      <div class="text-muted">Total prestado</div>
-      <div class="fs-4 fw-bold">$ {{ "{:,.0f}".format(totales.prestado|float).replace(",", ".") }}</div>
-    </div>
-  </div>
-  <div class="col-md-4">
-    <div class="card p-3">
-      <div class="text-muted">Total pagado</div>
-      <div class="fs-4 fw-bold">$ {{ "{:,.0f}".format(totales.pagado|float).replace(",", ".") }}</div>
-    </div>
-  </div>
-  <div class="col-md-4">
-    <div class="card p-3">
-      <div class="text-muted">Saldo total</div>
-      <div class="fs-4 fw-bold">$ {{ "{:,.0f}".format(totales.saldo|float).replace(",", ".") }}</div>
-    </div>
-  </div>
-</div>
-
-<div class="card p-3">
   <div class="table-responsive">
-    <table class="table table-bordered bg-white m-0">
+    <table class="table table-striped align-middle">
       <thead>
         <tr>
+          <th>ID</th>
           <th>Cliente</th>
-          <th>Cédula</th>
+          <th>Documento</th>
           <th>Teléfono</th>
-          <th>Monto</th>
-          <th>Pagado</th>
-          <th>Saldo</th>
-          <th>Último pago</th>
-          <th>Tipo</th>
-          <th style="width:140px;">Acción</th>
+          <th class="text-end"># Pagos</th>
+          <th class="text-end">Total pagado</th>
         </tr>
       </thead>
       <tbody>
-        {% if filas|length == 0 %}
-          <tr><td colspan="9" class="text-center">No hay clientes</td></tr>
-        {% endif %}
-
-        {% for r in filas %}
+        {% for r in rows %}
         <tr>
-          <td>{{ r.nombre }}</td>
-          <td>{{ r.cedula }}</td>
-          <td>{{ r.telefono }}</td>
-          <td>$ {{ "{:,.0f}".format(r.monto|float).replace(",", ".") }}</td>
-          <td>$ {{ "{:,.0f}".format(r.pagado_total|float).replace(",", ".") }}</td>
-          <td><b>$ {{ "{:,.0f}".format(r.saldo|float).replace(",", ".") }}</b></td>
-          <td>{{ r.ultimo_pago }}</td>
-          <td>{{ r.tipo_cobro }}</td>
-          <td>
-            <a class="btn btn-sm btn-primary w-100" href="/pagos?cedula={{ r.cedula }}">Ver pagos</a>
-          </td>
+          <td>{{ r["id"] }}</td>
+          <td>{{ r["nombre"] }}</td>
+          <td>{{ r["documento"] or "" }}</td>
+          <td>{{ r["telefono"] or "" }}</td>
+          <td class="text-end">{{ r["n_pagos"] }}</td>
+          <td class="text-end">${{ "%.2f"|format(r["total_pagado"]) }}</td>
         </tr>
         {% endfor %}
+        {% if rows|length == 0 %}
+        <tr><td colspan="6" class="text-center text-muted">Sin clientes aún.</td></tr>
+        {% endif %}
       </tbody>
     </table>
   </div>
 </div>
-
 {% endblock %}
