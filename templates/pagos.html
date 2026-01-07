@@ -15,6 +15,7 @@
 
 <form method="post" action="/pagos/guardar" class="card p-3 mb-4">
   <div class="row g-3">
+
     <div class="col-md-6">
       <label class="form-label">Cliente</label>
       <select name="cedula" class="form-control" required>
@@ -28,6 +29,9 @@
     <div class="col-md-3">
       <label class="form-label">Valor</label>
       <input type="number" name="valor" class="form-control" required min="0" step="0.01">
+      <div class="form-text">
+        * Si eliges <b>Préstamo</b>, se aplica <b>seguro 10%</b> (se descuenta del entregado) y <b>20% mensual</b>.
+      </div>
     </div>
 
     <div class="col-md-3">
@@ -35,14 +39,24 @@
       <input type="date" name="fecha" class="form-control" required>
     </div>
 
-    <div class="col-md-3 d-flex align-items-end">
-      <button class="btn btn-success w-100">Guardar Pago</button>
+    <!-- ✅ NUEVO: Tipo -->
+    <div class="col-md-3">
+      <label class="form-label">Tipo</label>
+      <select name="tipo_cobro" class="form-control" required>
+        <option value="abono" selected>Abono (pago)</option>
+        <option value="prestamo">Préstamo (nuevo)</option>
+      </select>
     </div>
+
+    <div class="col-md-3 d-flex align-items-end">
+      <button class="btn btn-success w-100">Guardar</button>
+    </div>
+
   </div>
 </form>
 
 <div class="card p-3">
-  <h5 class="mb-3">Últimos pagos</h5>
+  <h5 class="mb-3">Últimos movimientos</h5>
 
   <div class="table-responsive">
     <table class="table table-bordered bg-white m-0">
@@ -54,13 +68,18 @@
           <th>Hora</th>
           <th>Valor</th>
           <th>Tipo</th>
+
+          <!-- ✅ NUEVO: Seguro y Entregado (solo aplica en préstamo) -->
+          <th>Seguro (10%)</th>
+          <th>Entregado</th>
+
           <th>Registrado por</th>
           <th style="width:220px;">Acciones</th>
         </tr>
       </thead>
       <tbody>
         {% if pagos|length == 0 %}
-          <tr><td colspan="8" class="text-center">No hay pagos</td></tr>
+          <tr><td colspan="10" class="text-center">No hay movimientos</td></tr>
         {% endif %}
 
         {% for p in pagos %}
@@ -69,14 +88,42 @@
           <td>{{ p.cedula }}</td>
           <td>{{ p.fecha }}</td>
           <td>{{ p.hora }}</td>
+
           <td>$ {{ "{:,.0f}".format(p.valor|float).replace(",", ".") }}</td>
-          <td>{{ p.tipo_cobro }}</td>
+
+          <td>
+            {% if (p.tipo_cobro or "").lower() == "prestamo" %}
+              <span class="badge bg-warning text-dark">Préstamo</span>
+            {% else %}
+              <span class="badge bg-success">Abono</span>
+            {% endif %}
+          </td>
+
+          <!-- Seguro -->
+          <td>
+            {% if (p.tipo_cobro or "").lower() == "prestamo" %}
+              $ {{ "{:,.0f}".format((p.seguro|default(0))|float).replace(",", ".") }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
+
+          <!-- Entregado -->
+          <td>
+            {% if (p.tipo_cobro or "").lower() == "prestamo" %}
+              $ {{ "{:,.0f}".format((p.monto_entregado|default(0))|float).replace(",", ".") }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
+
           <td>{{ p.registrado_por }}</td>
+
           <td class="d-flex gap-2">
             <a class="btn btn-warning btn-sm w-100" href="/pagos/editar/{{ p.id }}">Editar</a>
 
             <form method="post" action="/pagos/eliminar" class="w-100"
-                  onsubmit="return confirm('¿Eliminar este pago?');">
+                  onsubmit="return confirm('¿Eliminar este movimiento?');">
               <input type="hidden" name="pago_id" value="{{ p.id }}">
               <button class="btn btn-danger btn-sm w-100">Eliminar</button>
             </form>
@@ -87,5 +134,19 @@
     </table>
   </div>
 </div>
+
+<script>
+  // Pone la fecha de hoy por defecto (si está vacía)
+  (function () {
+    const input = document.querySelector('input[name="fecha"]');
+    if (input && !input.value) {
+      const d = new Date();
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      input.value = `${yyyy}-${mm}-${dd}`;
+    }
+  })();
+</script>
 
 {% endblock %}
