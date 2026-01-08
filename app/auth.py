@@ -84,10 +84,7 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     )
 
     response = RedirectResponse("/dashboard", status_code=302)
-
-    # ✅ Render / proxies: usa x-forwarded-proto para saber si afuera es https
-    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
-    secure_flag = (proto == "https")
+    secure_flag = (request.url.scheme == "https")
 
     response.set_cookie(
         key="token",
@@ -101,9 +98,8 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     return response
 
 
-def _redirect_login_clear_cookie(show_error: bool = False):
-    url = "/login?error=1" if show_error else "/login"
-    resp = RedirectResponse(url, status_code=302)
+def _redirect_login_clear_cookie():
+    resp = RedirectResponse("/login?error=1", status_code=302)
     resp.delete_cookie("token", path="/")
     return resp
 
@@ -111,24 +107,24 @@ def _redirect_login_clear_cookie(show_error: bool = False):
 def get_current_user(request: Request):
     token = request.cookies.get("token")
     if not token:
-        return _redirect_login_clear_cookie(show_error=False)
+        return _redirect_login_clear_cookie()
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username = payload.get("sub")
-        role = payload.get("role")
 
         if not username:
-            return _redirect_login_clear_cookie(show_error=False)
+            return _redirect_login_clear_cookie()
 
         db_user = get_user_by_username(username)
         if not db_user:
-            return _redirect_login_clear_cookie(show_error=False)
+            return _redirect_login_clear_cookie()
 
-        return {"username": username, "role": role}
+        # ✅ SIEMPRE usa el rol real de la BD (no el del token)
+        return {"username": db_user["username"], "role": db_user["role"]}
 
     except JWTError:
-        return _redirect_login_clear_cookie(show_error=False)
+        return _redirect_login_clear_cookie()
 
 
 def require_user(request: Request):
