@@ -25,6 +25,7 @@ def pagos_page(request: Request):
     conn = get_connection()
     try:
         cur = conn.cursor()
+
         cur.execute("SELECT id, nombre FROM clientes ORDER BY nombre ASC")
         clientes = cur.fetchall()
 
@@ -41,6 +42,7 @@ def pagos_page(request: Request):
             ORDER BY p.id DESC
         """)
         pagos = cur.fetchall()
+
     finally:
         conn.close()
 
@@ -79,7 +81,7 @@ def crear_pago(
     # ✅ Reglas del negocio
     if tipo == "prestamo":
         seguro = round(valor * SEGURO, 2)          # 10% una sola vez
-        monto_entregado = round(valor - seguro, 2) # se descuenta del dinero entregado
+        monto_entregado = round(valor - seguro, 2) # descontado del entregado
         interes_mensual = INTERES_MENSUAL          # 20% mensual
 
         if not (nota or "").strip():
@@ -88,6 +90,8 @@ def crear_pago(
     conn = get_connection()
     try:
         cur = conn.cursor()
+
+        # Insert con columnas nuevas (si existen)
         try:
             cur.execute(
                 """
@@ -106,18 +110,10 @@ def crear_pago(
                 ),
             )
         except sqlite3.OperationalError:
-            # Fallback si faltan columnas
+            # fallback si la BD no tiene columnas nuevas
             cur.execute(
-                """
-                INSERT INTO pagos (cliente_id, fecha, valor, nota)
-                VALUES (?, ?, ?, ?)
-                """,
-                (
-                    cliente_id,
-                    fecha.strip(),
-                    round(valor, 2),
-                    (nota or "").strip(),
-                ),
+                "INSERT INTO pagos (cliente_id, fecha, valor, nota) VALUES (?, ?, ?, ?)",
+                (cliente_id, fecha.strip(), round(valor, 2), (nota or "").strip()),
             )
 
         conn.commit()
@@ -127,9 +123,12 @@ def crear_pago(
     return RedirectResponse(url="/pagos", status_code=303)
 
 
-@router.get("/eliminar/{pago_id}")
-def eliminar_pago(request: Request, pago_id: int):
-    # ✅ SOLO ADMIN (no permitir que cobradores borren movimientos)
+# ✅ SOLO ADMIN puede eliminar (colaborador NO)
+@router.post("/eliminar")
+def eliminar_pago(
+    request: Request,
+    pago_id: int = Form(...),
+):
     user = require_admin(request)
     if isinstance(user, RedirectResponse):
         return user
