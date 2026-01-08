@@ -21,6 +21,14 @@
     .navbar { box-shadow: 0 2px 8px rgba(0,0,0,.08); }
     table th { background: #0d6efd; color: white; }
   </style>
+
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/static/sw.js").catch(() => {});
+      });
+    }
+  </script>
 </head>
 
 <body>
@@ -39,15 +47,6 @@
 <div class="container mt-4">
   {% block content %}{% endblock %}
 </div>
-
-<script>
-  // ✅ Registrar Service Worker (solo UNO)
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("/static/sw.js").catch(() => {});
-    });
-  }
-</script>
 
 </body>
 </html>
