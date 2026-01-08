@@ -1,4 +1,3 @@
-@'
 const CACHE_VERSION = "v3";
 const STATIC_CACHE = `bless-static-${CACHE_VERSION}`;
 
@@ -9,7 +8,9 @@ const STATIC_ASSETS = [
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(STATIC_CACHE).then((cache) => cache.addAll(STATIC_ASSETS)));
+  event.waitUntil(
+    caches.open(STATIC_CACHE).then((cache) => cache.addAll(STATIC_ASSETS)).catch(() => {})
+  );
   self.skipWaiting();
 });
 
@@ -22,23 +23,11 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
+// NO cachear POST/PUT. Solo GET.
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
 
-  const url = new URL(event.request.url);
-  if (url.origin !== self.location.origin) return;
-
-  // Cache-first para archivos estáticos
-  if (url.pathname.startsWith("/static/")) {
-    event.respondWith(
-      caches.match(event.request).then((cached) => cached || fetch(event.request))
-    );
-    return;
-  }
-
-  // Network-first para páginas (evita cosas raras con login)
   event.respondWith(
-    fetch(event.request).then((res) => res).catch(() => caches.match(event.request))
+    caches.match(event.request).then((cached) => cached || fetch(event.request))
   );
 });
-'@ | Set-Content -Encoding UTF8 "static/sw.js"
