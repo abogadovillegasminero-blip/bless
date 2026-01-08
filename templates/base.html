@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+
   <title>Bless</title>
 
   <!-- PWA -->
@@ -40,7 +41,7 @@
 </div>
 
 <script>
-  // ✅ PWA Service Worker (UNO SOLO)
+  // ✅ Registrar Service Worker (solo UNO)
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("/static/sw.js").catch(() => {});
