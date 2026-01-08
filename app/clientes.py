@@ -1,6 +1,4 @@
 # app/clientes.py
-import os
-import sqlite3
 from datetime import datetime
 
 from fastapi import APIRouter, Request, Form
@@ -8,25 +6,14 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import require_user, require_admin
+from app.db import get_connection
 
 router = APIRouter(prefix="/clientes", tags=["clientes"])
 templates = Jinja2Templates(directory="templates")
 
-DB_PATH = os.getenv("DB_PATH", "/tmp/bless.db")
-
-
-def get_connection():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
-    try:
-        conn.execute("PRAGMA journal_mode=WAL;")
-    except Exception:
-        pass
-    conn.row_factory = sqlite3.Row
-    return conn
-
 
 @router.get("")
-def listar_clientes(request: Request):
+def clientes_page(request: Request):
     user = require_user(request)
     if isinstance(user, RedirectResponse):
         return user
@@ -34,7 +21,19 @@ def listar_clientes(request: Request):
     conn = get_connection()
     try:
         cur = conn.cursor()
-        cur.execute('SELECT * FROM clientes ORDER BY id DESC')
+        cur.execute("""
+            SELECT
+              id,
+              COALESCE(nombre,'') AS nombre,
+              COALESCE(documento,'') AS documento,
+              COALESCE(telefono,'') AS telefono,
+              COALESCE(direccion,'') AS direccion,
+              COALESCE(codigo_postal,'') AS codigo_postal,
+              COALESCE(observaciones,'') AS observaciones,
+              COALESCE(created_at,'') AS created_at
+            FROM clientes
+            ORDER BY id DESC
+        """)
         clientes = cur.fetchall()
     finally:
         conn.close()
@@ -59,34 +58,45 @@ def crear_cliente(
     if isinstance(user, RedirectResponse):
         return user
 
+    nombre = (nombre or "").strip()
+    documento = (documento or "").strip()
+    telefono = (telefono or "").strip()
+    direccion = (direccion or "").strip()
+    codigo_postal = (codigo_postal or "").strip()
+    observaciones = (observaciones or "").strip()
+
+    if not nombre:
+        return RedirectResponse("/clientes", status_code=303)
+
+    created_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
     conn = get_connection()
     try:
         cur = conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO clientes (nombre, documento, telefono, direccion, codigo_postal, observaciones, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                nombre.strip(),
-                documento.strip(),
-                telefono.strip(),
-                direccion.strip(),
-                codigo_postal.strip(),
-                observaciones.strip(),
-                datetime.utcnow().isoformat(timespec="seconds"),
-            ),
-        )
-        conn.commit()
+        try:
+            cur.execute(
+                """
+                INSERT INTO clientes (nombre, documento, telefono, direccion, codigo_postal, observaciones, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (nombre, documento, telefono, direccion, codigo_postal, observaciones, created_at),
+            )
+            conn.commit()
+        except Exception:
+            # Si hay error por duplicado u otra cosa, no tumbamos la app
+            pass
     finally:
         conn.close()
 
-    return RedirectResponse(url="/clientes", status_code=303)
+    return RedirectResponse("/clientes", status_code=303)
 
 
-@router.get("/eliminar/{cliente_id}")
-def eliminar_cliente(request: Request, cliente_id: int):
-    # ✅ SOLO ADMIN (porque borra cliente)
+# ✅ SOLO ADMIN puede eliminar
+@router.post("/eliminar")
+def eliminar_cliente(
+    request: Request,
+    cliente_id: int = Form(...),
+):
     user = require_admin(request)
     if isinstance(user, RedirectResponse):
         return user
@@ -99,4 +109,4 @@ def eliminar_cliente(request: Request, cliente_id: int):
     finally:
         conn.close()
 
-    return RedirectResponse(url="/clientes", status_code=303)
+    return RedirectResponse("/clientes", status_code=303)
