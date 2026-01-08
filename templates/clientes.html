@@ -6,74 +6,88 @@
   <a class="btn btn-secondary btn-sm" href="/dashboard">⬅ Volver</a>
 </div>
 
-<form method="post" action="/clientes/guardar" class="card p-3 mb-4">
+<form method="post" action="/clientes/crear" class="card p-3 mb-4">
   <div class="row g-3">
-    <div class="col-md-4">
-      <label class="form-label">Nombre</label>
-      <input name="nombre" class="form-control" required>
+
+    <div class="col-md-6">
+      <label class="form-label">Nombre *</label>
+      <input type="text" name="nombre" class="form-control" required>
     </div>
+
     <div class="col-md-3">
-      <label class="form-label">Cédula</label>
-      <input name="cedula" class="form-control" required>
+      <label class="form-label">Documento</label>
+      <input type="text" name="documento" class="form-control">
     </div>
+
     <div class="col-md-3">
       <label class="form-label">Teléfono</label>
-      <input name="telefono" class="form-control" required>
+      <input type="text" name="telefono" class="form-control">
     </div>
-    <div class="col-md-2">
-      <label class="form-label">Monto</label>
-      <input name="monto" type="number" class="form-control" required min="0" step="0.01">
+
+    <div class="col-md-6">
+      <label class="form-label">Dirección</label>
+      <input type="text" name="direccion" class="form-control">
     </div>
+
     <div class="col-md-3">
-      <label class="form-label">Tipo de cobro</label>
-      <select name="tipo_cobro" class="form-control" required>
-        <option value="">Seleccione</option>
-        <option value="diario">Diario</option>
-        <option value="semanal">Semanal</option>
-      </select>
+      <label class="form-label">Código postal</label>
+      <input type="text" name="codigo_postal" class="form-control">
     </div>
+
+    <div class="col-md-6">
+      <label class="form-label">Observaciones</label>
+      <input type="text" name="observaciones" class="form-control">
+    </div>
+
     <div class="col-md-3 d-flex align-items-end">
-      <button class="btn btn-primary w-100">Guardar</button>
+      <button class="btn btn-success w-100">Guardar Cliente</button>
     </div>
+
   </div>
 </form>
 
 <div class="card p-3">
+  <h5 class="mb-3">Listado</h5>
+
   <div class="table-responsive">
     <table class="table table-bordered bg-white m-0">
       <thead>
         <tr>
+          <th>ID</th>
           <th>Nombre</th>
-          <th>Cédula</th>
+          <th>Documento</th>
           <th>Teléfono</th>
-          <th>Monto</th>
-          <th>Tipo cobro</th>
-          <th style="width:320px;">Acciones</th>
+          <th>Dirección</th>
+          <th>Código</th>
+          <th>Obs.</th>
+          <th>Creado</th>
+          <th style="width:170px;">Acciones</th>
         </tr>
       </thead>
       <tbody>
         {% if clientes|length == 0 %}
-          <tr><td colspan="6" class="text-center">No hay clientes</td></tr>
+          <tr><td colspan="9" class="text-center">No hay clientes</td></tr>
         {% endif %}
 
         {% for c in clientes %}
         <tr>
+          <td>{{ c.id }}</td>
           <td>{{ c.nombre }}</td>
-          <td>{{ c.cedula }}</td>
+          <td>{{ c.documento }}</td>
           <td>{{ c.telefono }}</td>
-          <td>$ {{ "{:,.0f}".format(c.monto|float).replace(",", ".") }}</td>
-          <td>{{ c.tipo_cobro }}</td>
-          <td class="d-flex gap-2 flex-wrap">
-            <a class="btn btn-info btn-sm" style="min-width:90px;" href="/clientes/ver?cedula={{ c.cedula }}">Ver</a>
-            <a class="btn btn-warning btn-sm" style="min-width:90px;" href="/clientes/editar/{{ c.id }}">Editar</a>
-            <a class="btn btn-primary btn-sm" style="min-width:110px;" href="/pagos?cedula={{ c.cedula }}">Pagos</a>
+          <td>{{ c.direccion }}</td>
+          <td>{{ c.codigo_postal }}</td>
+          <td>{{ c.observaciones }}</td>
+          <td>{{ c.created_at }}</td>
 
-            {% if user and user.role == "admin" %}
-            <form method="post" action="/clientes/eliminar"
-                  onsubmit="return (prompt('Escribe ELIMINAR TODO para confirmar:') === 'ELIMINAR TODO');">
-              <input type="hidden" name="cliente_id" value="{{ c.id }}">
-              <button class="btn btn-danger btn-sm" style="min-width:130px;">Eliminar + pagos</button>
-            </form>
+          <td>
+            {% if user.role == "admin" %}
+              <form method="post" action="/clientes/eliminar" onsubmit="return confirm('¿Eliminar este cliente?');">
+                <input type="hidden" name="cliente_id" value="{{ c.id }}">
+                <button class="btn btn-danger btn-sm w-100">Eliminar</button>
+              </form>
+            {% else %}
+              <span class="text-muted">-</span>
             {% endif %}
           </td>
         </tr>
