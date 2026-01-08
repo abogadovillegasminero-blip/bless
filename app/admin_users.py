@@ -1,4 +1,6 @@
 # app/admin_users.py
+import sqlite3
+
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -17,6 +19,9 @@ def usuarios_page(request: Request):
     if isinstance(user, RedirectResponse):
         return user
 
+    msg = request.query_params.get("msg")
+    err = request.query_params.get("err")
+
     conn = get_connection()
     try:
         cur = conn.cursor()
@@ -27,7 +32,7 @@ def usuarios_page(request: Request):
 
     return templates.TemplateResponse(
         "admin_users.html",
-        {"request": request, "user": user, "usuarios": usuarios},
+        {"request": request, "user": user, "usuarios": usuarios, "msg": msg, "err": err},
     )
 
 
@@ -42,7 +47,10 @@ def crear_usuario(
     if isinstance(user, RedirectResponse):
         return user
 
-    username = username.strip()
+    username = (username or "").strip()
+    if not username:
+        return RedirectResponse("/admin/usuarios?err=Usuario%20vac%C3%ADo", status_code=303)
+
     role = (role or "user").strip().lower()
     if role not in ("admin", "user"):
         role = "user"
@@ -55,13 +63,12 @@ def crear_usuario(
             (username, hash_password(password), role),
         )
         conn.commit()
-    except Exception:
-        # si username ya existe, no tumbar la app
-        pass
+    except sqlite3.IntegrityError:
+        return RedirectResponse("/admin/usuarios?err=Ese%20usuario%20ya%20existe", status_code=303)
     finally:
         conn.close()
 
-    return RedirectResponse("/admin/usuarios", status_code=303)
+    return RedirectResponse("/admin/usuarios?msg=Usuario%20creado", status_code=303)
 
 
 @router.post("/usuarios/reset")
@@ -85,7 +92,7 @@ def reset_password(
     finally:
         conn.close()
 
-    return RedirectResponse("/admin/usuarios", status_code=303)
+    return RedirectResponse("/admin/usuarios?msg=Password%20actualizada", status_code=303)
 
 
 @router.post("/usuarios/eliminar")
@@ -97,22 +104,20 @@ def eliminar_usuario(
     if isinstance(user, RedirectResponse):
         return user
 
-    # Evita borrar admin actual por accidente (si coincide por username)
     current_username = user.get("username")
 
     conn = get_connection()
     try:
         cur = conn.cursor()
 
-        # No borrar el usuario logueado
         cur.execute("SELECT username FROM usuarios WHERE id = ?", (user_id,))
         row = cur.fetchone()
         if row and row["username"] == current_username:
-            return RedirectResponse("/admin/usuarios", status_code=303)
+            return RedirectResponse("/admin/usuarios?err=No%20puedes%20borrarte%20a%20ti%20mismo", status_code=303)
 
         cur.execute("DELETE FROM usuarios WHERE id = ?", (user_id,))
         conn.commit()
     finally:
         conn.close()
 
-    return RedirectResponse("/admin/usuarios", status_code=303)
+    return RedirectResponse("/admin/usuarios?msg=Usuario%20eliminado", status_code=303)
