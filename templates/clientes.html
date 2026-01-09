@@ -29,10 +29,7 @@
       <input type="text" name="direccion" class="form-control">
     </div>
 
-    <div class="col-md-3">
-      <label class="form-label">Código postal</label>
-      <input type="text" name="codigo_postal" class="form-control">
-    </div>
+    <!-- ❌ Eliminado: Código postal -->
 
     <div class="col-md-6">
       <label class="form-label">Observaciones</label>
@@ -58,7 +55,6 @@
           <th>Documento</th>
           <th>Teléfono</th>
           <th>Dirección</th>
-          <th>Código</th>
           <th>Obs.</th>
           <th>Creado</th>
           <th style="width:170px;">Acciones</th>
@@ -66,7 +62,7 @@
       </thead>
       <tbody>
         {% if clientes|length == 0 %}
-          <tr><td colspan="9" class="text-center">No hay clientes</td></tr>
+          <tr><td colspan="8" class="text-center">No hay clientes</td></tr>
         {% endif %}
 
         {% for c in clientes %}
@@ -76,7 +72,6 @@
           <td>{{ c.documento }}</td>
           <td>{{ c.telefono }}</td>
           <td>{{ c.direccion }}</td>
-          <td>{{ c.codigo_postal }}</td>
           <td>{{ c.observaciones }}</td>
           <td>{{ c.created_at }}</td>
 
