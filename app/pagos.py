@@ -15,7 +15,8 @@ templates = Jinja2Templates(directory="templates")
 INTERES_MENSUAL = 0.20
 SEGURO = 0.10
 
-FRECS_VALIDAS = ("diario", "semanal", "quincenal", "mensual")
+# Frecuencias permitidas
+FRECUENCIAS = ("diario", "semanal", "quincenal")
 
 
 @router.get("")
@@ -49,7 +50,13 @@ def pagos_page(request: Request):
 
     return templates.TemplateResponse(
         "pagos.html",
-        {"request": request, "user": user, "clientes": clientes, "pagos": pagos},
+        {
+            "request": request,
+            "user": user,
+            "clientes": clientes,
+            "pagos": pagos,
+            "frecuencias": FRECUENCIAS,
+        },
     )
 
 
@@ -60,8 +67,8 @@ def crear_pago(
     fecha: str = Form(""),
     valor: float = Form(...),
     nota: str = Form(""),
-    tipo: str = Form("abono"),          # 'abono' o 'prestamo'
-    frecuencia: str = Form("mensual"),  # diario/semanal/quincenal/mensual
+    tipo: str = Form("abono"),         # abono | prestamo
+    frecuencia: str = Form("diario"),  # diario | semanal | quincenal
 ):
     user = require_user(request)
     if isinstance(user, RedirectResponse):
@@ -71,9 +78,9 @@ def crear_pago(
     if tipo not in ("abono", "prestamo"):
         tipo = "abono"
 
-    frecuencia = (frecuencia or "mensual").strip().lower()
-    if frecuencia not in FRECS_VALIDAS:
-        frecuencia = "mensual"
+    frecuencia = (frecuencia or "diario").strip().lower()
+    if frecuencia not in FRECUENCIAS:
+        frecuencia = "diario"
 
     if not (fecha or "").strip():
         fecha = datetime.utcnow().date().isoformat()
@@ -83,21 +90,22 @@ def crear_pago(
     seguro = 0.0
     monto_entregado = 0.0
     interes_mensual = 0.0
+    frecuencia_db = ""  # solo aplica a préstamo (si quieres también en abono, quita esta línea)
 
-    # ✅ Reglas negocio
     if tipo == "prestamo":
-        seguro = round(valor * SEGURO, 2)          # 10% una sola vez
+        seguro = round(valor * SEGURO, 2)
         monto_entregado = round(valor - seguro, 2)
-        interes_mensual = INTERES_MENSUAL          # 20% mensual
+        interes_mensual = INTERES_MENSUAL
+        frecuencia_db = frecuencia
 
         if not (nota or "").strip():
-            nota = f"Préstamo: frec={frecuencia} | seguro 10%={seguro} | entregado={monto_entregado} | interés mensual=20%"
+            nota = f"Préstamo: freq={frecuencia_db} | seguro 10%={seguro} | entregado={monto_entregado} | interés mensual=20%"
 
     conn = get_connection()
     try:
         cur = conn.cursor()
 
-        # Insert con columna frecuencia (si existe)
+        # Insert con columnas nuevas (si existen)
         try:
             cur.execute(
                 """
@@ -110,14 +118,14 @@ def crear_pago(
                     round(valor, 2),
                     (nota or "").strip(),
                     tipo,
-                    frecuencia,
+                    frecuencia_db,
                     seguro,
                     monto_entregado,
                     interes_mensual,
                 ),
             )
         except sqlite3.OperationalError:
-            # Fallback si faltan columnas en sqlite viejo
+            # fallback si DB vieja
             cur.execute(
                 """
                 INSERT INTO pagos (cliente_id, fecha, valor, nota)
