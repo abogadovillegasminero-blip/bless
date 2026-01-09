@@ -73,7 +73,6 @@ class _PGCompatConn:
         return self._conn.close()
 
     def execute(self, *a, **kw):
-        # por compat si alguien usa conn.execute(...)
         cur = self.cursor()
         cur.execute(*a, **kw)
         return cur
@@ -86,7 +85,6 @@ def get_connection():
     # Si hay Postgres, úsalo SIEMPRE (esto evita que se borre la info en Render Free)
     if DATABASE_URL:
         import psycopg2
-        # Neon/Supabase suelen requerir SSL
         conn = psycopg2.connect(DATABASE_URL, sslmode="require")
         return _PGCompatConn(conn)
 
@@ -130,6 +128,7 @@ def init_db():
         )
         """)
 
+        # ✅ Pagos (y préstamos) + ✅ frecuencia
         cur.execute("""
         CREATE TABLE IF NOT EXISTS pagos (
             id SERIAL PRIMARY KEY,
@@ -140,7 +139,8 @@ def init_db():
             tipo TEXT,
             seguro DOUBLE PRECISION,
             monto_entregado DOUBLE PRECISION,
-            interes_mensual DOUBLE PRECISION
+            interes_mensual DOUBLE PRECISION,
+            frecuencia TEXT
         )
         """)
 
@@ -151,6 +151,8 @@ def init_db():
         cur.execute("ALTER TABLE pagos ADD COLUMN IF NOT EXISTS seguro DOUBLE PRECISION")
         cur.execute("ALTER TABLE pagos ADD COLUMN IF NOT EXISTS monto_entregado DOUBLE PRECISION")
         cur.execute("ALTER TABLE pagos ADD COLUMN IF NOT EXISTS interes_mensual DOUBLE PRECISION")
+        # ✅ NUEVO
+        cur.execute("ALTER TABLE pagos ADD COLUMN IF NOT EXISTS frecuencia TEXT")
 
         conn.commit()
         conn.close()
@@ -207,6 +209,8 @@ def init_db():
         _ensure_column_sqlite(conn, "pagos", "seguro", "REAL")
         _ensure_column_sqlite(conn, "pagos", "monto_entregado", "REAL")
         _ensure_column_sqlite(conn, "pagos", "interes_mensual", "REAL")
+        # ✅ NUEVO
+        _ensure_column_sqlite(conn, "pagos", "frecuencia", "TEXT")
     except Exception:
         pass
 
@@ -220,27 +224,17 @@ def ensure_admin(username: str, password: str):
     conn = get_connection()
     cur = conn.cursor()
 
-    if DATABASE_URL:
-        cur.execute("SELECT id FROM usuarios WHERE username = ?", (username,))
-        row = cur.fetchone()
-        if not row:
-            cur.execute(
-                "INSERT INTO usuarios (username, password, role) VALUES (?, ?, 'admin')",
-                (username, password),
-            )
-            conn.commit()
-        conn.close()
-        return
-
-    # sqlite
+    # (El wrapper de Postgres convierte ? -> %s automáticamente)
     cur.execute("SELECT id FROM usuarios WHERE username = ?", (username,))
     row = cur.fetchone()
+
     if not row:
         cur.execute(
             "INSERT INTO usuarios (username, password, role) VALUES (?, ?, 'admin')",
             (username, password),
         )
         conn.commit()
+
     conn.close()
 
 
