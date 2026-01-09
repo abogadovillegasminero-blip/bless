@@ -15,7 +15,7 @@ templates = Jinja2Templates(directory="templates")
 INTERES_MENSUAL = 0.20
 SEGURO = 0.10
 
-FRECUENCIAS_VALIDAS = {"diario", "semanal", "quincenal"}
+FRECS_VALIDAS = ("diario", "semanal", "quincenal", "mensual")
 
 
 @router.get("")
@@ -34,10 +34,10 @@ def pagos_page(request: Request):
             SELECT
               p.id, p.cliente_id, p.fecha, p.valor, p.nota,
               COALESCE(p.tipo, 'abono') AS tipo,
+              COALESCE(p.frecuencia, '') AS frecuencia,
               COALESCE(p.seguro, 0) AS seguro,
               COALESCE(p.monto_entregado, 0) AS monto_entregado,
               COALESCE(p.interes_mensual, 0) AS interes_mensual,
-              COALESCE(p.frecuencia, '') AS frecuencia,
               c.nombre AS cliente_nombre
             FROM pagos p
             LEFT JOIN clientes c ON c.id = p.cliente_id
@@ -61,7 +61,7 @@ def crear_pago(
     valor: float = Form(...),
     nota: str = Form(""),
     tipo: str = Form("abono"),          # 'abono' o 'prestamo'
-    frecuencia: str = Form("diario"),   # 'diario' / 'semanal' / 'quincenal' (solo préstamo)
+    frecuencia: str = Form("mensual"),  # diario/semanal/quincenal/mensual
 ):
     user = require_user(request)
     if isinstance(user, RedirectResponse):
@@ -71,9 +71,9 @@ def crear_pago(
     if tipo not in ("abono", "prestamo"):
         tipo = "abono"
 
-    frecuencia = (frecuencia or "diario").strip().lower()
-    if frecuencia not in FRECUENCIAS_VALIDAS:
-        frecuencia = "diario"
+    frecuencia = (frecuencia or "mensual").strip().lower()
+    if frecuencia not in FRECS_VALIDAS:
+        frecuencia = "mensual"
 
     if not (fecha or "").strip():
         fecha = datetime.utcnow().date().isoformat()
@@ -83,32 +83,25 @@ def crear_pago(
     seguro = 0.0
     monto_entregado = 0.0
     interes_mensual = 0.0
-    frecuencia_guardar = ""  # por defecto vacío si es abono
 
+    # ✅ Reglas negocio
     if tipo == "prestamo":
-        seguro = round(valor * SEGURO, 2)                 # 10% una sola vez
-        monto_entregado = round(valor - seguro, 2)        # se descuenta del dinero entregado
-        interes_mensual = INTERES_MENSUAL                 # 20% mensual
-        frecuencia_guardar = frecuencia                   # ✅ diario / semanal / quincenal
+        seguro = round(valor * SEGURO, 2)          # 10% una sola vez
+        monto_entregado = round(valor - seguro, 2)
+        interes_mensual = INTERES_MENSUAL          # 20% mensual
 
         if not (nota or "").strip():
-            nota = (
-                f"Préstamo: frecuencia={frecuencia_guardar} | "
-                f"seguro 10%={seguro} | entregado={monto_entregado} | interés mensual=20%"
-            )
+            nota = f"Préstamo: frec={frecuencia} | seguro 10%={seguro} | entregado={monto_entregado} | interés mensual=20%"
 
     conn = get_connection()
     try:
         cur = conn.cursor()
 
-        # ✅ Insert con columnas nuevas (si existen)
+        # Insert con columna frecuencia (si existe)
         try:
             cur.execute(
                 """
-                INSERT INTO pagos (
-                  cliente_id, fecha, valor, nota, tipo,
-                  seguro, monto_entregado, interes_mensual, frecuencia
-                )
+                INSERT INTO pagos (cliente_id, fecha, valor, nota, tipo, frecuencia, seguro, monto_entregado, interes_mensual)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
@@ -117,14 +110,14 @@ def crear_pago(
                     round(valor, 2),
                     (nota or "").strip(),
                     tipo,
+                    frecuencia,
                     seguro,
                     monto_entregado,
                     interes_mensual,
-                    frecuencia_guardar,
                 ),
             )
         except sqlite3.OperationalError:
-            # ✅ Fallback si por alguna razón aún no están las columnas
+            # Fallback si faltan columnas en sqlite viejo
             cur.execute(
                 """
                 INSERT INTO pagos (cliente_id, fecha, valor, nota)
