@@ -34,9 +34,19 @@
 
     <div class="col-md-3">
       <label class="form-label">Tipo</label>
-      <select name="tipo" class="form-control" required>
+      <select name="tipo" class="form-control" required id="tipoSelect">
         <option value="abono" selected>Abono (pago)</option>
         <option value="prestamo">Préstamo (nuevo)</option>
+      </select>
+    </div>
+
+    <!-- ✅ NUEVO: Frecuencia del cobro (solo préstamo) -->
+    <div class="col-md-3" id="frecuenciaBox" style="display:none;">
+      <label class="form-label">Frecuencia cobro</label>
+      <select name="frecuencia" class="form-control" id="frecuenciaSelect">
+        <option value="diario" selected>Diario</option>
+        <option value="semanal">Semanal</option>
+        <option value="quincenal">Quincenal</option>
       </select>
     </div>
 
@@ -63,6 +73,10 @@
           <th>Fecha</th>
           <th>Valor</th>
           <th>Tipo</th>
+
+          <!-- ✅ NUEVO -->
+          <th>Frecuencia</th>
+
           <th>Seguro (10%)</th>
           <th>Entregado</th>
           <th>Interés mensual</th>
@@ -73,7 +87,7 @@
 
       <tbody>
         {% if pagos|length == 0 %}
-          <tr><td colspan="9" class="text-center">No hay movimientos</td></tr>
+          <tr><td colspan="10" class="text-center">No hay movimientos</td></tr>
         {% endif %}
 
         {% for p in pagos %}
@@ -88,6 +102,15 @@
               <span class="badge bg-warning text-dark">Préstamo</span>
             {% else %}
               <span class="badge bg-success">Abono</span>
+            {% endif %}
+          </td>
+
+          <!-- ✅ Frecuencia -->
+          <td>
+            {% if (p.tipo or "").lower() == "prestamo" %}
+              {{ (p.frecuencia or "-")|capitalize }}
+            {% else %}
+              -
             {% endif %}
           </td>
 
@@ -118,18 +141,13 @@
           <td>{{ p.nota or "" }}</td>
 
           <td class="d-flex gap-2">
-            {% if user.role == "admin" %}
-              <!-- (si luego quieres editar, lo hacemos) -->
-              <!-- <a class="btn btn-warning btn-sm w-100" href="/pagos/editar/{{ p.id }}">Editar</a> -->
+            <a class="btn btn-warning btn-sm w-100" href="/pagos/editar/{{ p.id }}">Editar</a>
 
-              <form method="post" action="/pagos/eliminar" class="w-100"
-                    onsubmit="return confirm('¿Eliminar este movimiento?');">
-                <input type="hidden" name="pago_id" value="{{ p.id }}">
-                <button class="btn btn-danger btn-sm w-100">Eliminar</button>
-              </form>
-            {% else %}
-              <span class="text-muted">-</span>
-            {% endif %}
+            <form method="post" action="/pagos/eliminar" class="w-100"
+                  onsubmit="return confirm('¿Eliminar este movimiento?');">
+              <input type="hidden" name="pago_id" value="{{ p.id }}">
+              <button class="btn btn-danger btn-sm w-100">Eliminar</button>
+            </form>
           </td>
         </tr>
         {% endfor %}
@@ -140,6 +158,7 @@
 </div>
 
 <script>
+  // fecha por defecto
   (function () {
     const input = document.querySelector('input[name="fecha"]');
     if (input && !input.value) {
@@ -148,6 +167,23 @@
       const mm = String(d.getMonth() + 1).padStart(2, "0");
       const dd = String(d.getDate()).padStart(2, "0");
       input.value = `${yyyy}-${mm}-${dd}`;
+    }
+  })();
+
+  // mostrar/ocultar frecuencia según tipo
+  (function () {
+    const tipo = document.getElementById("tipoSelect");
+    const box = document.getElementById("frecuenciaBox");
+
+    function refresh() {
+      if (!tipo || !box) return;
+      const isPrestamo = (tipo.value || "").toLowerCase() === "prestamo";
+      box.style.display = isPrestamo ? "" : "none";
+    }
+
+    if (tipo) {
+      tipo.addEventListener("change", refresh);
+      refresh();
     }
   })();
 </script>
