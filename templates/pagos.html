@@ -34,23 +34,22 @@
 
     <div class="col-md-3">
       <label class="form-label">Tipo</label>
-      <select name="tipo" class="form-control" required>
+      <select name="tipo" class="form-control" required id="tipoSelect">
         <option value="abono" selected>Abono (pago)</option>
         <option value="prestamo">Préstamo (nuevo)</option>
       </select>
     </div>
 
-    <!-- ✅ NUEVO: Frecuencia -->
+    <!-- ✅ NUEVO: Frecuencia (solo para préstamo) -->
     <div class="col-md-3">
       <label class="form-label">Frecuencia</label>
-      <select name="frecuencia" class="form-control" required>
+      <select name="frecuencia" class="form-control" id="frecuenciaSelect">
         <option value="diario">Diario</option>
         <option value="semanal">Semanal</option>
         <option value="quincenal">Quincenal</option>
-        <option value="mensual" selected>Mensual</option>
       </select>
-      <div class="form-text">
-        Solo para control del plan de cobro (diario/semanal/quincenal/mensual).
+      <div class="form-text" id="freqHelp">
+        Aplica para el préstamo (diario/semanal/quincenal).
       </div>
     </div>
 
@@ -106,7 +105,13 @@
             {% endif %}
           </td>
 
-          <td>{{ (p.frecuencia or "-") }}</td>
+          <td>
+            {% if (p.tipo or "").lower() == "prestamo" %}
+              {{ (p.frecuencia or "diario")|capitalize }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
 
           <td>
             {% if (p.tipo or "").lower() == "prestamo" %}
@@ -152,6 +157,7 @@
 </div>
 
 <script>
+  // Fecha de hoy por defecto
   (function () {
     const input = document.querySelector('input[name="fecha"]');
     if (input && !input.value) {
@@ -160,6 +166,24 @@
       const mm = String(d.getMonth() + 1).padStart(2, "0");
       const dd = String(d.getDate()).padStart(2, "0");
       input.value = `${yyyy}-${mm}-${dd}`;
+    }
+  })();
+
+  // Mostrar/ocultar frecuencia según tipo
+  (function () {
+    const tipo = document.getElementById("tipoSelect");
+    const freq = document.getElementById("frecuenciaSelect");
+    const help = document.getElementById("freqHelp");
+
+    function toggleFreq() {
+      const isPrestamo = (tipo.value || "").toLowerCase() === "prestamo";
+      freq.disabled = !isPrestamo;
+      help.style.display = isPrestamo ? "block" : "none";
+    }
+
+    if (tipo && freq) {
+      tipo.addEventListener("change", toggleFreq);
+      toggleFreq();
     }
   })();
 </script>
