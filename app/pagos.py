@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request, Form
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.auth import require_user, require_admin
+from app.auth import require_user
 from app.db import get_connection
 
 router = APIRouter(prefix="/pagos", tags=["pagos"])
@@ -14,6 +14,8 @@ templates = Jinja2Templates(directory="templates")
 
 INTERES_MENSUAL = 0.20
 SEGURO = 0.10
+
+FRECUENCIAS_VALIDAS = {"diario", "semanal", "quincenal"}
 
 
 @router.get("")
@@ -25,7 +27,6 @@ def pagos_page(request: Request):
     conn = get_connection()
     try:
         cur = conn.cursor()
-
         cur.execute("SELECT id, nombre FROM clientes ORDER BY nombre ASC")
         clientes = cur.fetchall()
 
@@ -36,13 +37,13 @@ def pagos_page(request: Request):
               COALESCE(p.seguro, 0) AS seguro,
               COALESCE(p.monto_entregado, 0) AS monto_entregado,
               COALESCE(p.interes_mensual, 0) AS interes_mensual,
+              COALESCE(p.frecuencia, '') AS frecuencia,
               c.nombre AS cliente_nombre
             FROM pagos p
             LEFT JOIN clientes c ON c.id = p.cliente_id
             ORDER BY p.id DESC
         """)
         pagos = cur.fetchall()
-
     finally:
         conn.close()
 
@@ -59,7 +60,8 @@ def crear_pago(
     fecha: str = Form(""),
     valor: float = Form(...),
     nota: str = Form(""),
-    tipo: str = Form("abono"),  # 'abono' o 'prestamo'
+    tipo: str = Form("abono"),          # 'abono' o 'prestamo'
+    frecuencia: str = Form("diario"),   # 'diario' / 'semanal' / 'quincenal' (solo préstamo)
 ):
     user = require_user(request)
     if isinstance(user, RedirectResponse):
@@ -69,6 +71,10 @@ def crear_pago(
     if tipo not in ("abono", "prestamo"):
         tipo = "abono"
 
+    frecuencia = (frecuencia or "diario").strip().lower()
+    if frecuencia not in FRECUENCIAS_VALIDAS:
+        frecuencia = "diario"
+
     if not (fecha or "").strip():
         fecha = datetime.utcnow().date().isoformat()
 
@@ -77,26 +83,33 @@ def crear_pago(
     seguro = 0.0
     monto_entregado = 0.0
     interes_mensual = 0.0
+    frecuencia_guardar = ""  # por defecto vacío si es abono
 
-    # ✅ Reglas del negocio
     if tipo == "prestamo":
-        seguro = round(valor * SEGURO, 2)          # 10% una sola vez
-        monto_entregado = round(valor - seguro, 2) # descontado del entregado
-        interes_mensual = INTERES_MENSUAL          # 20% mensual
+        seguro = round(valor * SEGURO, 2)                 # 10% una sola vez
+        monto_entregado = round(valor - seguro, 2)        # se descuenta del dinero entregado
+        interes_mensual = INTERES_MENSUAL                 # 20% mensual
+        frecuencia_guardar = frecuencia                   # ✅ diario / semanal / quincenal
 
         if not (nota or "").strip():
-            nota = f"Préstamo: seguro 10%={seguro} | entregado={monto_entregado} | interés mensual=20%"
+            nota = (
+                f"Préstamo: frecuencia={frecuencia_guardar} | "
+                f"seguro 10%={seguro} | entregado={monto_entregado} | interés mensual=20%"
+            )
 
     conn = get_connection()
     try:
         cur = conn.cursor()
 
-        # Insert con columnas nuevas (si existen)
+        # ✅ Insert con columnas nuevas (si existen)
         try:
             cur.execute(
                 """
-                INSERT INTO pagos (cliente_id, fecha, valor, nota, tipo, seguro, monto_entregado, interes_mensual)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO pagos (
+                  cliente_id, fecha, valor, nota, tipo,
+                  seguro, monto_entregado, interes_mensual, frecuencia
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     cliente_id,
@@ -107,13 +120,22 @@ def crear_pago(
                     seguro,
                     monto_entregado,
                     interes_mensual,
+                    frecuencia_guardar,
                 ),
             )
         except sqlite3.OperationalError:
-            # fallback si la BD no tiene columnas nuevas
+            # ✅ Fallback si por alguna razón aún no están las columnas
             cur.execute(
-                "INSERT INTO pagos (cliente_id, fecha, valor, nota) VALUES (?, ?, ?, ?)",
-                (cliente_id, fecha.strip(), round(valor, 2), (nota or "").strip()),
+                """
+                INSERT INTO pagos (cliente_id, fecha, valor, nota)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    cliente_id,
+                    fecha.strip(),
+                    round(valor, 2),
+                    (nota or "").strip(),
+                ),
             )
 
         conn.commit()
@@ -123,13 +145,9 @@ def crear_pago(
     return RedirectResponse(url="/pagos", status_code=303)
 
 
-# ✅ SOLO ADMIN puede eliminar (colaborador NO)
-@router.post("/eliminar")
-def eliminar_pago(
-    request: Request,
-    pago_id: int = Form(...),
-):
-    user = require_admin(request)
+@router.get("/eliminar/{pago_id}")
+def eliminar_pago(request: Request, pago_id: int):
+    user = require_user(request)
     if isinstance(user, RedirectResponse):
         return user
 
