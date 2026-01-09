@@ -28,7 +28,6 @@ def _safe_db_path() -> str:
 # POSTGRES (Render Free OK)
 # =========================
 def _replace_qmarks_outside_quotes(sql: str) -> str:
-    # Reemplaza ? -> %s solo fuera de strings '...'
     parts = sql.split("'")
     for i in range(0, len(parts), 2):
         parts[i] = parts[i].replace("?", "%s")
@@ -62,7 +61,6 @@ class _PGCompatConn:
         self._conn = conn
 
     def cursor(self):
-        # RealDictCursor: filas como dict (compat con tu app)
         from psycopg2.extras import RealDictCursor
         return _PGCompatCursor(self._conn.cursor(cursor_factory=RealDictCursor))
 
@@ -82,13 +80,11 @@ class _PGCompatConn:
 
 
 def get_connection():
-    # Si hay Postgres, úsalo SIEMPRE (esto evita que se borre la info en Render Free)
     if DATABASE_URL:
         import psycopg2
         conn = psycopg2.connect(DATABASE_URL, sslmode="require")
         return _PGCompatConn(conn)
 
-    # Si no hay DATABASE_URL, usa sqlite (local)
     db_file = _safe_db_path()
     conn = sqlite3.connect(db_file, check_same_thread=False, timeout=30)
     conn.row_factory = sqlite3.Row
@@ -115,6 +111,7 @@ def init_db():
         )
         """)
 
+        # ✅ Clientes (SIN codigo_postal)
         cur.execute("""
         CREATE TABLE IF NOT EXISTS clientes (
             id SERIAL PRIMARY KEY,
@@ -122,13 +119,12 @@ def init_db():
             documento TEXT,
             telefono TEXT,
             direccion TEXT,
-            codigo_postal TEXT,
             observaciones TEXT,
             created_at TEXT
         )
         """)
 
-        # ✅ Pagos (y préstamos) + ✅ frecuencia
+        # ✅ Pagos (y préstamos) + frecuencia
         cur.execute("""
         CREATE TABLE IF NOT EXISTS pagos (
             id SERIAL PRIMARY KEY,
@@ -144,14 +140,12 @@ def init_db():
         )
         """)
 
-        # “Migraciones seguras”
+        # Migraciones seguras
         cur.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS created_at TEXT")
-
         cur.execute("ALTER TABLE pagos ADD COLUMN IF NOT EXISTS tipo TEXT")
         cur.execute("ALTER TABLE pagos ADD COLUMN IF NOT EXISTS seguro DOUBLE PRECISION")
         cur.execute("ALTER TABLE pagos ADD COLUMN IF NOT EXISTS monto_entregado DOUBLE PRECISION")
         cur.execute("ALTER TABLE pagos ADD COLUMN IF NOT EXISTS interes_mensual DOUBLE PRECISION")
-        # ✅ NUEVO
         cur.execute("ALTER TABLE pagos ADD COLUMN IF NOT EXISTS frecuencia TEXT")
 
         conn.commit()
@@ -168,6 +162,7 @@ def init_db():
     )
     """)
 
+    # ✅ Clientes (SIN codigo_postal)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS clientes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -175,7 +170,6 @@ def init_db():
         documento TEXT,
         telefono TEXT,
         direccion TEXT,
-        codigo_postal TEXT,
         observaciones TEXT
     )
     """)
@@ -190,10 +184,8 @@ def init_db():
         FOREIGN KEY(cliente_id) REFERENCES clientes(id)
     )
     """)
-
     conn.commit()
 
-    # Migraciones seguras en sqlite
     def _ensure_column_sqlite(connection, table, column, col_type):
         c = connection.cursor()
         c.execute(f'PRAGMA table_info("{table}")')
@@ -204,12 +196,10 @@ def init_db():
 
     try:
         _ensure_column_sqlite(conn, "clientes", "created_at", "TEXT")
-
         _ensure_column_sqlite(conn, "pagos", "tipo", "TEXT")
         _ensure_column_sqlite(conn, "pagos", "seguro", "REAL")
         _ensure_column_sqlite(conn, "pagos", "monto_entregado", "REAL")
         _ensure_column_sqlite(conn, "pagos", "interes_mensual", "REAL")
-        # ✅ NUEVO
         _ensure_column_sqlite(conn, "pagos", "frecuencia", "TEXT")
     except Exception:
         pass
@@ -224,7 +214,6 @@ def ensure_admin(username: str, password: str):
     conn = get_connection()
     cur = conn.cursor()
 
-    # (El wrapper de Postgres convierte ? -> %s automáticamente)
     cur.execute("SELECT id FROM usuarios WHERE username = ?", (username,))
     row = cur.fetchone()
 
