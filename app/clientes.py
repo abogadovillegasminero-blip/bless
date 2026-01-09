@@ -28,7 +28,6 @@ def clientes_page(request: Request):
               COALESCE(documento,'') AS documento,
               COALESCE(telefono,'') AS telefono,
               COALESCE(direccion,'') AS direccion,
-              COALESCE(codigo_postal,'') AS codigo_postal,
               COALESCE(observaciones,'') AS observaciones,
               COALESCE(created_at,'') AS created_at
             FROM clientes
@@ -51,7 +50,6 @@ def crear_cliente(
     documento: str = Form(""),
     telefono: str = Form(""),
     direccion: str = Form(""),
-    codigo_postal: str = Form(""),
     observaciones: str = Form(""),
 ):
     user = require_user(request)
@@ -62,7 +60,6 @@ def crear_cliente(
     documento = (documento or "").strip()
     telefono = (telefono or "").strip()
     direccion = (direccion or "").strip()
-    codigo_postal = (codigo_postal or "").strip()
     observaciones = (observaciones or "").strip()
 
     if not nombre:
@@ -74,16 +71,17 @@ def crear_cliente(
     try:
         cur = conn.cursor()
         try:
+            # ✅ SIN codigo_postal
             cur.execute(
                 """
-                INSERT INTO clientes (nombre, documento, telefono, direccion, codigo_postal, observaciones, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO clientes (nombre, documento, telefono, direccion, observaciones, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (nombre, documento, telefono, direccion, codigo_postal, observaciones, created_at),
+                (nombre, documento, telefono, direccion, observaciones, created_at),
             )
             conn.commit()
         except Exception:
-            # Si hay error por duplicado u otra cosa, no tumbamos la app
+            # no tumbar la app
             pass
     finally:
         conn.close()
