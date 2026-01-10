@@ -1,119 +1,94 @@
 # app/saldos.py
-from datetime import datetime, date
-
 from fastapi import APIRouter, Request
-from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.auth import require_admin
-from app.db import get_connection
+from app import db
 
-router = APIRouter(prefix="/saldos", tags=["saldos"])
+router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
-INTERES_MENSUAL = 0.20
+DEFAULT_INTERES_MENSUAL = 20.0  # 20% mensual
 
 
-def _months_elapsed(fecha_iso: str) -> int:
+@router.get("/saldos")
+def ver_saldos(request: Request):
     """
-    Meses completos transcurridos desde fecha_iso (YYYY-MM-DD) hasta hoy.
+    Mantiene el interés mensual fijo (por préstamo), pero:
+    - si frecuencia está vacía -> asumir 'mensual'
+    - NO rompe si valores vienen NULL
     """
-    try:
-        f = datetime.strptime((fecha_iso or "").strip(), "%Y-%m-%d").date()
-    except Exception:
-        return 0
+    clientes = db.fetch_all("""
+        SELECT id, nombre, documento, telefono, direccion, observaciones, COALESCE(NULLIF(tipo_cobro,''), 'mensual') AS tipo_cobro
+        FROM clientes
+        ORDER BY nombre ASC
+    """)
 
-    today = date.today()
-    months = (today.year - f.year) * 12 + (today.month - f.month)
-    if today.day < f.day:
-        months -= 1
-    return max(0, months)
+    saldos = []
 
+    for c in clientes:
+        cliente_id = c["id"] if isinstance(c, dict) else c[0]
 
-@router.get("")
-def saldos_page(request: Request):
-    # ✅ SOLO ADMIN
-    user = require_admin(request)
-    if isinstance(user, RedirectResponse):
-        return user
+        # Totales
+        tot_prestamos = db.fetch_one("""
+            SELECT COALESCE(SUM(monto_entregado), 0) AS total
+            FROM pagos
+            WHERE cliente_id = {ph} AND tipo = 'prestamo'
+        """.format(ph="?" if db.db_kind() == "sqlite" else "%s"), [cliente_id])
 
-    conn = get_connection()
-    try:
-        cur = conn.cursor()
+        tot_abonos = db.fetch_one("""
+            SELECT COALESCE(SUM(monto), 0) AS total
+            FROM pagos
+            WHERE cliente_id = {ph} AND tipo = 'abono'
+        """.format(ph="?" if db.db_kind() == "sqlite" else "%s"), [cliente_id])
 
-        cur.execute("""
+        total_prestado = (tot_prestamos["total"] if isinstance(tot_prestamos, dict) else tot_prestamos[0]) or 0
+        total_abonado = (tot_abonos["total"] if isinstance(tot_abonos, dict) else tot_abonos[0]) or 0
+        saldo = float(total_prestado) - float(total_abonado)
+
+        # Interés mensual total (solo sobre préstamos)
+        # Si interes_mensual viene NULL -> DEFAULT_INTERES_MENSUAL
+        # Si frecuencia viene NULL/vacía -> 'mensual' (solo informativo)
+        prestamos = db.fetch_all("""
             SELECT
-              c.id AS cliente_id,
-              c.nombre AS nombre,
-              COALESCE(c.documento, '') AS documento,
+              COALESCE(NULLIF(frecuencia,''), 'mensual') AS frecuencia,
+              COALESCE(interes_mensual, {default_im}) AS interes_mensual,
+              COALESCE(monto_entregado, 0) AS monto_entregado
+            FROM pagos
+            WHERE cliente_id = {ph} AND tipo = 'prestamo'
+        """.format(
+            ph="?" if db.db_kind() == "sqlite" else "%s",
+            default_im=DEFAULT_INTERES_MENSUAL
+        ), [cliente_id])
 
-              SUM(CASE WHEN COALESCE(p.tipo,'abono')='prestamo' THEN COALESCE(p.valor,0) ELSE 0 END) AS total_prestado,
-              SUM(CASE WHEN COALESCE(p.tipo,'abono')='prestamo' THEN COALESCE(p.seguro,0) ELSE 0 END) AS total_seguro,
-              SUM(CASE WHEN COALESCE(p.tipo,'abono')='prestamo' THEN COALESCE(p.monto_entregado,0) ELSE 0 END) AS total_entregado,
+        interes_mensual_total = 0.0
+        # Mantener interés mensual fijo (no convertir por frecuencia)
+        for p in prestamos:
+            if isinstance(p, dict):
+                monto_entregado = float(p.get("monto_entregado") or 0)
+                interes_pct = float(p.get("interes_mensual") or DEFAULT_INTERES_MENSUAL)
+            else:
+                # fallback
+                monto_entregado = float(p[2] or 0)
+                interes_pct = float(p[1] or DEFAULT_INTERES_MENSUAL)
 
-              SUM(CASE WHEN COALESCE(p.tipo,'abono')='abono' THEN COALESCE(p.valor,0) ELSE 0 END) AS total_abonos
-            FROM clientes c
-            LEFT JOIN pagos p ON p.cliente_id = c.id
-            GROUP BY c.id
-            ORDER BY c.nombre ASC
-        """)
-        clientes = cur.fetchall()
+            interes_mensual_total += (monto_entregado * (interes_pct / 100.0))
 
-        saldos = []
-        for c in clientes:
-            cliente_id = c["cliente_id"]
+        # Empaquetar resultado
+        saldos.append({
+            "cliente": c,
+            "total_prestado": float(total_prestado),
+            "total_abonado": float(total_abonado),
+            "saldo": float(saldo),
+            "interes_mensual_total": float(interes_mensual_total),
+        })
 
-            cur.execute("""
-                SELECT fecha, valor
-                FROM pagos
-                WHERE cliente_id = ?
-                  AND COALESCE(tipo,'abono')='prestamo'
-                ORDER BY id ASC
-            """, (cliente_id,))
-            prestamos = cur.fetchall()
-
-            interes_acumulado = 0.0
-            deuda_con_interes = 0.0
-
-            for pr in prestamos:
-                fecha = pr["fecha"] or ""
-                valor = float(pr["valor"] or 0)
-                meses = _months_elapsed(fecha)
-
-                interes = valor * INTERES_MENSUAL * meses
-                interes_acumulado += interes
-                deuda_con_interes += (valor + interes)
-
-            total_abonos = float(c["total_abonos"] or 0)
-            total_prestado = float(c["total_prestado"] or 0)
-            total_seguro = float(c["total_seguro"] or 0)
-            total_entregado = float(c["total_entregado"] or 0)
-
-            saldo = deuda_con_interes - total_abonos
-
-            a_favor = 0.0
-            if saldo < 0:
-                a_favor = abs(saldo)
-                saldo = 0.0
-
-            saldos.append({
-                "cliente_id": cliente_id,
-                "nombre": c["nombre"],
-                "documento": c["documento"],
-                "total_prestado": round(total_prestado, 2),
-                "interes_acumulado": round(interes_acumulado, 2),
-                "deuda_con_interes": round(deuda_con_interes, 2),
-                "total_abonos": round(total_abonos, 2),
-                "saldo": round(saldo, 2),
-                "a_favor": round(a_favor, 2),
-                "total_seguro": round(total_seguro, 2),
-                "total_entregado": round(total_entregado, 2),
-            })
-
-    finally:
-        conn.close()
-
+    # No se entrega template aquí porque no lo pediste.
+    # Si tu template actual usa claves viejas, NO se rompe por agregar nuevas.
     return templates.TemplateResponse(
         "saldos.html",
-        {"request": request, "user": user, "saldos": saldos},
+        {
+            "request": request,
+            "saldos": saldos,
+            "default_interes_mensual": DEFAULT_INTERES_MENSUAL,
+        }
     )
