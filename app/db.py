@@ -1,231 +1,319 @@
 # app/db.py
 import os
 import sqlite3
-from pathlib import Path
+from contextlib import contextmanager
+from urllib.parse import urlparse
 
+# Detecta Postgres por DATABASE_URL (Render) o usa SQLite por DB_PATH
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+DB_PATH = os.getenv("DB_PATH", "bless.db")
 
-# =========================
-# SQLITE (local o fallback)
-# =========================
-DEFAULT_DB = "/var/data/bless.db"
-FALLBACK_LOCAL = str(Path(__file__).resolve().parent.parent / "data" / "bless.db")
-DB_PATH = os.getenv("DB_PATH", DEFAULT_DB)
+_DB_KIND = "postgres" if DATABASE_URL else "sqlite"
 
-
-def _safe_db_path() -> str:
-    p = Path(DB_PATH)
-    try:
-        p.parent.mkdir(parents=True, exist_ok=True)
-        return str(p)
-    except Exception:
-        p2 = Path(FALLBACK_LOCAL)
-        p2.parent.mkdir(parents=True, exist_ok=True)
-        return str(p2)
+# Para evitar re-ejecutar init_db en cada import raro
+_DB_INITIALIZED = False
 
 
-# =========================
-# POSTGRES (Render Free OK)
-# =========================
-def _replace_qmarks_outside_quotes(sql: str) -> str:
-    parts = sql.split("'")
-    for i in range(0, len(parts), 2):
-        parts[i] = parts[i].replace("?", "%s")
-    return "'".join(parts)
+def db_kind() -> str:
+    return _DB_KIND
 
 
-class _PGCompatCursor:
-    def __init__(self, cur):
-        self._cur = cur
-
-    def execute(self, sql, params=None):
-        sql = _replace_qmarks_outside_quotes(sql)
-        return self._cur.execute(sql, params or ())
-
-    def executemany(self, sql, seq_of_params):
-        sql = _replace_qmarks_outside_quotes(sql)
-        return self._cur.executemany(sql, seq_of_params)
-
-    def fetchone(self):
-        return self._cur.fetchone()
-
-    def fetchall(self):
-        return self._cur.fetchall()
-
-    def __getattr__(self, name):
-        return getattr(self._cur, name)
-
-
-class _PGCompatConn:
-    def __init__(self, conn):
-        self._conn = conn
-
-    def cursor(self):
-        from psycopg2.extras import RealDictCursor
-        return _PGCompatCursor(self._conn.cursor(cursor_factory=RealDictCursor))
-
-    def commit(self):
-        return self._conn.commit()
-
-    def close(self):
-        return self._conn.close()
-
-    def execute(self, *a, **kw):
-        cur = self.cursor()
-        cur.execute(*a, **kw)
-        return cur
-
-    def __getattr__(self, name):
-        return getattr(self._conn, name)
-
-
-def get_connection():
-    if DATABASE_URL:
-        import psycopg2
-        conn = psycopg2.connect(DATABASE_URL, sslmode="require")
-        return _PGCompatConn(conn)
-
-    db_file = _safe_db_path()
-    conn = sqlite3.connect(db_file, check_same_thread=False, timeout=30)
+def _sqlite_conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    try:
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("PRAGMA synchronous=NORMAL;")
-    except Exception:
-        pass
     return conn
 
 
-def init_db():
-    conn = get_connection()
-    cur = conn.cursor()
+def _postgres_conn():
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
 
-    if DATABASE_URL:
-        # ===== POSTGRES =====
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS usuarios (
-            id SERIAL PRIMARY KEY,
-            username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'user'
-        )
-        """)
+    # Render suele dar postgres://...
+    # psycopg2 acepta postgres:// sin problema, pero forzamos sslmode si no viene.
+    dsn = DATABASE_URL
+    if "sslmode=" not in dsn:
+        sep = "&" if "?" in dsn else "?"
+        dsn = f"{dsn}{sep}sslmode=require"
 
-        # ✅ Clientes (SIN codigo_postal)
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS clientes (
-            id SERIAL PRIMARY KEY,
-            nombre TEXT NOT NULL,
-            documento TEXT,
-            telefono TEXT,
-            direccion TEXT,
-            observaciones TEXT,
-            created_at TEXT
-        )
-        """)
+    return psycopg2.connect(dsn, cursor_factory=RealDictCursor)
 
-        # ✅ Pagos (y préstamos) + frecuencia
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS pagos (
-            id SERIAL PRIMARY KEY,
-            cliente_id INTEGER REFERENCES clientes(id),
-            fecha TEXT,
-            valor DOUBLE PRECISION,
-            nota TEXT,
-            tipo TEXT,
-            seguro DOUBLE PRECISION,
-            monto_entregado DOUBLE PRECISION,
-            interes_mensual DOUBLE PRECISION,
-            frecuencia TEXT
-        )
-        """)
 
-        # Migraciones seguras
-        cur.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS created_at TEXT")
-        cur.execute("ALTER TABLE pagos ADD COLUMN IF NOT EXISTS tipo TEXT")
-        cur.execute("ALTER TABLE pagos ADD COLUMN IF NOT EXISTS seguro DOUBLE PRECISION")
-        cur.execute("ALTER TABLE pagos ADD COLUMN IF NOT EXISTS monto_entregado DOUBLE PRECISION")
-        cur.execute("ALTER TABLE pagos ADD COLUMN IF NOT EXISTS interes_mensual DOUBLE PRECISION")
-        cur.execute("ALTER TABLE pagos ADD COLUMN IF NOT EXISTS frecuencia TEXT")
+@contextmanager
+def get_conn():
+    """
+    Context manager unificado.
+    - SQLite: sqlite3.Connection
+    - Postgres: psycopg2.Connection
+    """
+    if _DB_KIND == "sqlite":
+        conn = _sqlite_conn()
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+    else:
+        conn = _postgres_conn()
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
-        conn.commit()
-        conn.close()
-        return
 
-    # ===== SQLITE =====
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS usuarios (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'user'
-    )
-    """)
+def _placeholders(n: int) -> str:
+    """
+    Devuelve placeholders según motor:
+    - sqlite: ?,?,?
+    - postgres: %s,%s,%s
+    """
+    if n <= 0:
+        return ""
+    ph = "?" if _DB_KIND == "sqlite" else "%s"
+    return ",".join([ph] * n)
 
-    # ✅ Clientes (SIN codigo_postal)
-    cur.execute("""
+
+def fetch_all(sql: str, params=None):
+    params = params or []
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+        return rows
+
+
+def fetch_one(sql: str, params=None):
+    params = params or []
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(sql, params)
+        row = cur.fetchone()
+        return row
+
+
+def execute(sql: str, params=None) -> int:
+    """
+    Ejecuta SQL y retorna rowcount.
+    """
+    params = params or []
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(sql, params)
+        return cur.rowcount
+
+
+def insert_and_get_id(sql_sqlite: str, sql_postgres: str, params=None) -> int:
+    """
+    Inserta y retorna ID.
+    - SQLite: usa lastrowid
+    - Postgres: requiere RETURNING id
+    """
+    params = params or []
+    with get_conn() as conn:
+        cur = conn.cursor()
+        if _DB_KIND == "sqlite":
+            cur.execute(sql_sqlite, params)
+            return int(cur.lastrowid)
+        else:
+            cur.execute(sql_postgres, params)
+            row = cur.fetchone()
+            return int(row["id"]) if isinstance(row, dict) else int(row[0])
+
+
+# --------------------------
+# MIGRACIÓN / SCHEMA SEGURO
+# --------------------------
+
+def _sqlite_table_columns(table: str) -> set[str]:
+    rows = fetch_all(f"PRAGMA table_info({table})")
+    cols = set()
+    for r in rows:
+        # sqlite3.Row: r["name"]
+        cols.add(r["name"])
+    return cols
+
+
+def _postgres_table_columns(table: str) -> set[str]:
+    sql = """
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema='public' AND table_name=%s
+    """
+    rows = fetch_all(sql, [table])
+    cols = set()
+    for r in rows:
+        # RealDictCursor => dict
+        if isinstance(r, dict):
+            cols.add(r["column_name"])
+        else:
+            cols.add(r[0])
+    return cols
+
+
+def table_columns(table: str) -> set[str]:
+    if _DB_KIND == "sqlite":
+        return _sqlite_table_columns(table)
+    return _postgres_table_columns(table)
+
+
+def _create_tables_sqlite():
+    # Nota: SQLite no soporta DROP COLUMN fácil -> solo dejamos de usar codigo_postal.
+    execute("""
     CREATE TABLE IF NOT EXISTS clientes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         nombre TEXT NOT NULL,
         documento TEXT,
         telefono TEXT,
         direccion TEXT,
-        observaciones TEXT
+        observaciones TEXT,
+        tipo_cobro TEXT DEFAULT 'mensual'
     )
     """)
 
-    cur.execute("""
+    execute("""
     CREATE TABLE IF NOT EXISTS pagos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        cliente_id INTEGER,
-        fecha TEXT,
-        valor REAL,
-        nota TEXT,
+        cliente_id INTEGER NOT NULL,
+        fecha TEXT NOT NULL,
+        tipo TEXT NOT NULL, -- 'abono' o 'prestamo'
+        monto REAL DEFAULT 0, -- abono
+        seguro REAL DEFAULT 0,
+        monto_entregado REAL DEFAULT 0, -- prestamo
+        interes_mensual REAL DEFAULT 20, -- porcentaje
+        frecuencia TEXT DEFAULT 'mensual',
         FOREIGN KEY(cliente_id) REFERENCES clientes(id)
     )
     """)
-    conn.commit()
 
-    def _ensure_column_sqlite(connection, table, column, col_type):
-        c = connection.cursor()
-        c.execute(f'PRAGMA table_info("{table}")')
-        cols = [row[1] for row in c.fetchall()]
-        if column not in cols:
-            c.execute(f'ALTER TABLE "{table}" ADD COLUMN "{column}" {col_type}')
-            connection.commit()
-
-    try:
-        _ensure_column_sqlite(conn, "clientes", "created_at", "TEXT")
-        _ensure_column_sqlite(conn, "pagos", "tipo", "TEXT")
-        _ensure_column_sqlite(conn, "pagos", "seguro", "REAL")
-        _ensure_column_sqlite(conn, "pagos", "monto_entregado", "REAL")
-        _ensure_column_sqlite(conn, "pagos", "interes_mensual", "REAL")
-        _ensure_column_sqlite(conn, "pagos", "frecuencia", "TEXT")
-    except Exception:
-        pass
-
-    conn.close()
+    # Índices útiles
+    execute("CREATE INDEX IF NOT EXISTS idx_pagos_cliente_id ON pagos(cliente_id)")
+    execute("CREATE INDEX IF NOT EXISTS idx_pagos_fecha ON pagos(fecha)")
 
 
-def ensure_admin(username: str, password: str):
-    if not username or not password:
+def _create_tables_postgres():
+    execute("""
+    CREATE TABLE IF NOT EXISTS clientes (
+        id SERIAL PRIMARY KEY,
+        nombre TEXT NOT NULL,
+        documento TEXT,
+        telefono TEXT,
+        direccion TEXT,
+        observaciones TEXT,
+        tipo_cobro TEXT DEFAULT 'mensual'
+    )
+    """)
+
+    execute("""
+    CREATE TABLE IF NOT EXISTS pagos (
+        id SERIAL PRIMARY KEY,
+        cliente_id INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+        fecha TEXT NOT NULL,
+        tipo TEXT NOT NULL, -- 'abono' o 'prestamo'
+        monto DOUBLE PRECISION DEFAULT 0,
+        seguro DOUBLE PRECISION DEFAULT 0,
+        monto_entregado DOUBLE PRECISION DEFAULT 0,
+        interes_mensual DOUBLE PRECISION DEFAULT 20,
+        frecuencia TEXT DEFAULT 'mensual'
+    )
+    """)
+
+    execute("CREATE INDEX IF NOT EXISTS idx_pagos_cliente_id ON pagos(cliente_id)")
+    execute("CREATE INDEX IF NOT EXISTS idx_pagos_fecha ON pagos(fecha)")
+
+
+def _add_column_if_missing(table: str, column: str, col_type: str, default_sql: str | None = None):
+    cols = table_columns(table)
+    if column in cols:
         return
 
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("SELECT id FROM usuarios WHERE username = ?", (username,))
-    row = cur.fetchone()
-
-    if not row:
-        cur.execute(
-            "INSERT INTO usuarios (username, password, role) VALUES (?, ?, 'admin')",
-            (username, password),
-        )
-        conn.commit()
-
-    conn.close()
+    if _DB_KIND == "sqlite":
+        # SQLite: ALTER TABLE ADD COLUMN permite DEFAULT literal
+        if default_sql:
+            execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type} DEFAULT {default_sql}")
+        else:
+            execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+    else:
+        # Postgres: ADD COLUMN IF NOT EXISTS
+        if default_sql:
+            execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {col_type} DEFAULT {default_sql}")
+        else:
+            execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {col_type}")
 
 
-def migrate_excel_to_sqlite(*args, **kwargs):
-    return
+def _backfill_documento_from_cedula():
+    """
+    Si existía clientes.cedula y no existe documento (o documento vacío), copiar.
+    """
+    cols = table_columns("clientes")
+    if "cedula" not in cols:
+        return
+    if "documento" not in cols:
+        _add_column_if_missing("clientes", "documento", "TEXT")
+
+    # Copiar cedula -> documento donde documento esté NULL o vacío
+    if _DB_KIND == "sqlite":
+        execute("""
+        UPDATE clientes
+        SET documento = COALESCE(documento, cedula)
+        WHERE (documento IS NULL OR TRIM(documento) = '') AND cedula IS NOT NULL AND TRIM(cedula) <> ''
+        """)
+    else:
+        execute("""
+        UPDATE clientes
+        SET documento = COALESCE(documento, cedula)
+        WHERE (documento IS NULL OR BTRIM(documento) = '') AND cedula IS NOT NULL AND BTRIM(cedula) <> ''
+        """)
+
+
+def _backfill_frecuencia_default():
+    """
+    Si pagos.frecuencia está NULL/vacía, dejar 'mensual' (requisito: si vacío, asumir mensual).
+    """
+    cols = table_columns("pagos")
+    if "frecuencia" not in cols:
+        return
+
+    if _DB_KIND == "sqlite":
+        execute("""
+        UPDATE pagos
+        SET frecuencia = 'mensual'
+        WHERE frecuencia IS NULL OR TRIM(frecuencia) = ''
+        """)
+    else:
+        execute("""
+        UPDATE pagos
+        SET frecuencia = 'mensual'
+        WHERE frecuencia IS NULL OR BTRIM(frecuencia) = ''
+        """)
+
+
+def init_db():
+    global _DB_INITIALIZED
+    if _DB_INITIALIZED:
+        return
+
+    # 1) Crear tablas base
+    if _DB_KIND == "sqlite":
+        _create_tables_sqlite()
+    else:
+        _create_tables_postgres()
+
+    # 2) Migraciones seguras (ADD COLUMN sin tumbar)
+    _add_column_if_missing("clientes", "tipo_cobro", "TEXT", "'mensual'")
+    _add_column_if_missing("pagos", "frecuencia", "TEXT", "'mensual'")
+
+    # 3) Normalizaciones
+    _backfill_documento_from_cedula()
+    _backfill_frecuencia_default()
+
+    _DB_INITIALIZED = True
+
+
+# Ejecuta migración automáticamente (seguro)
+init_db()
