@@ -15,7 +15,9 @@ from app.reportes import router as reportes_router
 from app.admin_users import router as admin_users_router
 
 app = FastAPI()
-
+@app.get("/healthz")
+def healthz():
+    return {"ok": True}
 @app.on_event("startup")
 def startup_event():
     init_db()
