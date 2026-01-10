@@ -1,163 +1,123 @@
 # app/pagos.py
-from datetime import datetime
-import sqlite3
-
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
+from datetime import datetime
 
-from app.auth import require_user
-from app.db import get_connection
+from app import db
 
-router = APIRouter(prefix="/pagos", tags=["pagos"])
+router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
-INTERES_MENSUAL = 0.20
-SEGURO = 0.10
-
-# Frecuencias permitidas
-FRECUENCIAS = ("diario", "semanal", "quincenal")
+FRECUENCIAS = ["diario", "semanal", "quincenal", "mensual"]
 
 
-@router.get("")
-def pagos_page(request: Request):
-    user = require_user(request)
-    if isinstance(user, RedirectResponse):
-        return user
+def _now_str():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    conn = get_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT id, nombre FROM clientes ORDER BY nombre ASC")
-        clientes = cur.fetchall()
 
-        cur.execute("""
-            SELECT
-              p.id, p.cliente_id, p.fecha, p.valor, p.nota,
-              COALESCE(p.tipo, 'abono') AS tipo,
-              COALESCE(p.frecuencia, '') AS frecuencia,
-              COALESCE(p.seguro, 0) AS seguro,
-              COALESCE(p.monto_entregado, 0) AS monto_entregado,
-              COALESCE(p.interes_mensual, 0) AS interes_mensual,
-              c.nombre AS cliente_nombre
-            FROM pagos p
-            LEFT JOIN clientes c ON c.id = p.cliente_id
-            ORDER BY p.id DESC
-        """)
-        pagos = cur.fetchall()
-    finally:
-        conn.close()
+@router.get("/pagos")
+def pagos_home(request: Request):
+    # Clientes para el select
+    clientes = db.fetch_all("""
+        SELECT id, nombre, documento
+        FROM clientes
+        ORDER BY nombre ASC
+    """)
+
+    # Últimos movimientos (prestamo/abono)
+    movimientos = db.fetch_all("""
+        SELECT
+            p.id,
+            p.fecha,
+            p.tipo,
+            p.monto,
+            p.seguro,
+            p.monto_entregado,
+            p.interes_mensual,
+            COALESCE(NULLIF(p.frecuencia, ''), 'mensual') AS frecuencia,
+            c.nombre AS cliente_nombre
+        FROM pagos p
+        JOIN clientes c ON c.id = p.cliente_id
+        ORDER BY p.id DESC
+        LIMIT 30
+    """)
 
     return templates.TemplateResponse(
         "pagos.html",
         {
             "request": request,
-            "user": user,
             "clientes": clientes,
-            "pagos": pagos,
+            "movimientos": movimientos,
             "frecuencias": FRECUENCIAS,
         },
     )
 
 
-@router.post("/crear")
+@router.post("/pagos/crear")
 def crear_pago(
     request: Request,
     cliente_id: int = Form(...),
-    fecha: str = Form(""),
-    valor: float = Form(...),
-    nota: str = Form(""),
-    tipo: str = Form("abono"),         # abono | prestamo
-    frecuencia: str = Form("diario"),  # diario | semanal | quincenal
+    tipo: str = Form(...),  # "abono" o "prestamo"
+    monto: float = Form(0),  # abono
+    seguro: float = Form(0),
+    monto_entregado: float = Form(0),  # prestamo
+    interes_mensual: float = Form(20),
+    frecuencia: str = Form("mensual"),
 ):
-    user = require_user(request)
-    if isinstance(user, RedirectResponse):
-        return user
+    tipo = (tipo or "").strip().lower()
 
-    tipo = (tipo or "abono").strip().lower()
-    if tipo not in ("abono", "prestamo"):
-        tipo = "abono"
-
-    frecuencia = (frecuencia or "diario").strip().lower()
+    # Normalización segura de frecuencia
+    frecuencia = (frecuencia or "").strip().lower()
     if frecuencia not in FRECUENCIAS:
-        frecuencia = "diario"
+        frecuencia = "mensual"
 
-    if not (fecha or "").strip():
-        fecha = datetime.utcnow().date().isoformat()
-
-    valor = float(valor or 0)
-
-    seguro = 0.0
-    monto_entregado = 0.0
-    interes_mensual = 0.0
-    frecuencia_db = ""  # solo aplica a préstamo (si quieres también en abono, quita esta línea)
-
-    if tipo == "prestamo":
-        seguro = round(valor * SEGURO, 2)
-        monto_entregado = round(valor - seguro, 2)
-        interes_mensual = INTERES_MENSUAL
+    # Reglas:
+    # - si tipo == prestamo: guardar frecuencia
+    # - si tipo == abono: frecuencia "-"
+    if tipo == "abono":
+        # en abono, monto es el valor real del abono; no requiere frecuencia
+        frecuencia_db = None
+        monto_entregado_db = 0
+        interes_mensual_db = 0
+        monto_db = float(monto or 0)
+    else:
+        # prestamo
         frecuencia_db = frecuencia
+        monto_entregado_db = float(monto_entregado or 0)
+        interes_mensual_db = float(interes_mensual or 20)
+        monto_db = 0
 
-        if not (nota or "").strip():
-            nota = f"Préstamo: freq={frecuencia_db} | seguro 10%={seguro} | entregado={monto_entregado} | interés mensual=20%"
+    seguro_db = float(seguro or 0)
 
-    conn = get_connection()
-    try:
-        cur = conn.cursor()
+    fecha = _now_str()
 
-        # Insert con columnas nuevas (si existen)
-        try:
-            cur.execute(
-                """
-                INSERT INTO pagos (cliente_id, fecha, valor, nota, tipo, frecuencia, seguro, monto_entregado, interes_mensual)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    cliente_id,
-                    fecha.strip(),
-                    round(valor, 2),
-                    (nota or "").strip(),
-                    tipo,
-                    frecuencia_db,
-                    seguro,
-                    monto_entregado,
-                    interes_mensual,
-                ),
-            )
-        except sqlite3.OperationalError:
-            # fallback si DB vieja
-            cur.execute(
-                """
-                INSERT INTO pagos (cliente_id, fecha, valor, nota)
-                VALUES (?, ?, ?, ?)
-                """,
-                (
-                    cliente_id,
-                    fecha.strip(),
-                    round(valor, 2),
-                    (nota or "").strip(),
-                ),
-            )
+    # Insert cross-db (sqlite vs postgres)
+    if db.db_kind() == "sqlite":
+        sql = """
+        INSERT INTO pagos (cliente_id, fecha, tipo, monto, seguro, monto_entregado, interes_mensual, frecuencia)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        db.execute(sql, [
+            cliente_id, fecha, tipo, monto_db, seguro_db, monto_entregado_db, interes_mensual_db, frecuencia_db
+        ])
+    else:
+        sql = """
+        INSERT INTO pagos (cliente_id, fecha, tipo, monto, seguro, monto_entregado, interes_mensual, frecuencia)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        db.execute(sql, [
+            cliente_id, fecha, tipo, monto_db, seguro_db, monto_entregado_db, interes_mensual_db, frecuencia_db
+        ])
 
-        conn.commit()
-    finally:
-        conn.close()
-
-    return RedirectResponse(url="/pagos", status_code=303)
+    return RedirectResponse("/pagos", status_code=303)
 
 
-@router.get("/eliminar/{pago_id}")
-def eliminar_pago(request: Request, pago_id: int):
-    user = require_user(request)
-    if isinstance(user, RedirectResponse):
-        return user
+@router.post("/pagos/eliminar/{pago_id}")
+def eliminar_pago(pago_id: int):
+    if db.db_kind() == "sqlite":
+        db.execute("DELETE FROM pagos WHERE id = ?", [pago_id])
+    else:
+        db.execute("DELETE FROM pagos WHERE id = %s", [pago_id])
 
-    conn = get_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("DELETE FROM pagos WHERE id = ?", (pago_id,))
-        conn.commit()
-    finally:
-        conn.close()
-
-    return RedirectResponse(url="/pagos", status_code=303)
+    return RedirectResponse("/pagos", status_code=303)
