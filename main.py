@@ -1,5 +1,6 @@
 # main.py
 import os
+import time
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -15,23 +16,38 @@ from app.reportes import router as reportes_router
 from app.admin_users import router as admin_users_router
 
 app = FastAPI()
+
+
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
+
+
 @app.on_event("startup")
 def startup_event():
-    init_db()
-    # Crea admin si no existe; si ya existe, lo deja igual.
-    ensure_admin(
-        os.getenv("ADMIN_USER", "admin"),
-        os.getenv("ADMIN_PASS", "admin123")
-    )
+    # Blindaje: a veces Postgres en Render demora un poco en aceptar conexiones
+    last_err = None
+    for _ in range(10):  # ~10 intentos
+        try:
+            init_db()
+            ensure_admin(
+                os.getenv("ADMIN_USER", "admin"),
+                os.getenv("ADMIN_PASS", "admin123")
+            )
+            return
+        except Exception as e:
+            last_err = e
+            time.sleep(1)
+
+    # Si después de reintentar sigue fallando, levantamos el error real
+    raise last_err
+
 
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
-# ✅ Render hace HEAD / para health-check
+# Render a veces hace HEAD / (health)
 @app.head("/")
 def healthcheck_head():
     return Response(status_code=200)
@@ -56,14 +72,14 @@ def dashboard(request: Request):
     return templates.TemplateResponse("dashboard.html", {"request": request, "user": user})
 
 
-# ✅ Rutas para cualquier usuario logueado (colaborador incluido)
+# Rutas para cualquier usuario logueado
 app.include_router(auth_router)
 app.include_router(clientes_router)
 app.include_router(pagos_router)
 app.include_router(saldos_router)
 
-# ✅ Rutas solo ADMIN: Reportes y Usuarios
-# (Si tus routers ya validan adentro, igual lo dejamos así por seguridad)
+
+# Rutas solo ADMIN: Reportes y Usuarios
 @app.middleware("http")
 async def admin_guard_middleware(request: Request, call_next):
     path = request.url.path
@@ -74,6 +90,7 @@ async def admin_guard_middleware(request: Request, call_next):
             return user
 
     return await call_next(request)
+
 
 app.include_router(reportes_router)
 app.include_router(admin_users_router)
