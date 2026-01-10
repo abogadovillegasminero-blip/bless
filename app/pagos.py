@@ -18,14 +18,12 @@ def _now_str():
 
 @router.get("/pagos")
 def pagos_home(request: Request):
-    # Clientes para el select
     clientes = db.fetch_all("""
         SELECT id, nombre, documento
         FROM clientes
         ORDER BY nombre ASC
     """)
 
-    # Últimos movimientos (prestamo/abono)
     movimientos = db.fetch_all("""
         SELECT
             p.id,
@@ -43,7 +41,7 @@ def pagos_home(request: Request):
         LIMIT 30
     """)
 
-    return templates.TemplateResponse(
+    resp = templates.TemplateResponse(
         "pagos.html",
         {
             "request": request,
@@ -52,6 +50,12 @@ def pagos_home(request: Request):
             "frecuencias": FRECUENCIAS,
         },
     )
+
+    # Anti-cache (especialmente útil si hay service worker / PWA)
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 
 @router.post("/pagos/crear")
@@ -67,48 +71,35 @@ def crear_pago(
 ):
     tipo = (tipo or "").strip().lower()
 
-    # Normalización segura de frecuencia
     frecuencia = (frecuencia or "").strip().lower()
     if frecuencia not in FRECUENCIAS:
         frecuencia = "mensual"
 
-    # Reglas:
-    # - si tipo == prestamo: guardar frecuencia
-    # - si tipo == abono: frecuencia "-"
     if tipo == "abono":
-        # en abono, monto es el valor real del abono; no requiere frecuencia
         frecuencia_db = None
         monto_entregado_db = 0
         interes_mensual_db = 0
         monto_db = float(monto or 0)
     else:
-        # prestamo
+        tipo = "prestamo"
         frecuencia_db = frecuencia
         monto_entregado_db = float(monto_entregado or 0)
         interes_mensual_db = float(interes_mensual or 20)
         monto_db = 0
 
     seguro_db = float(seguro or 0)
-
     fecha = _now_str()
 
-    # Insert cross-db (sqlite vs postgres)
     if db.db_kind() == "sqlite":
-        sql = """
-        INSERT INTO pagos (cliente_id, fecha, tipo, monto, seguro, monto_entregado, interes_mensual, frecuencia)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """
-        db.execute(sql, [
-            cliente_id, fecha, tipo, monto_db, seguro_db, monto_entregado_db, interes_mensual_db, frecuencia_db
-        ])
+        db.execute("""
+            INSERT INTO pagos (cliente_id, fecha, tipo, monto, seguro, monto_entregado, interes_mensual, frecuencia)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, [cliente_id, fecha, tipo, monto_db, seguro_db, monto_entregado_db, interes_mensual_db, frecuencia_db])
     else:
-        sql = """
-        INSERT INTO pagos (cliente_id, fecha, tipo, monto, seguro, monto_entregado, interes_mensual, frecuencia)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """
-        db.execute(sql, [
-            cliente_id, fecha, tipo, monto_db, seguro_db, monto_entregado_db, interes_mensual_db, frecuencia_db
-        ])
+        db.execute("""
+            INSERT INTO pagos (cliente_id, fecha, tipo, monto, seguro, monto_entregado, interes_mensual, frecuencia)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, [cliente_id, fecha, tipo, monto_db, seguro_db, monto_entregado_db, interes_mensual_db, frecuencia_db])
 
     return RedirectResponse("/pagos", status_code=303)
 
