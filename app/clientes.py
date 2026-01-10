@@ -1,110 +1,115 @@
 # app/clientes.py
-from datetime import datetime
-
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.auth import require_user, require_admin
-from app.db import get_connection
+from app import db
 
-router = APIRouter(prefix="/clientes", tags=["clientes"])
+router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
+TIPOS_COBRO = ["diario", "semanal", "quincenal", "mensual"]
 
-@router.get("")
-def clientes_page(request: Request):
-    user = require_user(request)
-    if isinstance(user, RedirectResponse):
-        return user
 
-    conn = get_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT
-              id,
-              COALESCE(nombre,'') AS nombre,
-              COALESCE(documento,'') AS documento,
-              COALESCE(telefono,'') AS telefono,
-              COALESCE(direccion,'') AS direccion,
-              COALESCE(observaciones,'') AS observaciones,
-              COALESCE(created_at,'') AS created_at
-            FROM clientes
-            ORDER BY id DESC
-        """)
-        clientes = cur.fetchall()
-    finally:
-        conn.close()
+@router.get("/clientes")
+def listar_clientes(request: Request, edit_id: int | None = None):
+    clientes = db.fetch_all("""
+        SELECT id, nombre, documento, telefono, direccion, observaciones, COALESCE(NULLIF(tipo_cobro,''), 'mensual') AS tipo_cobro
+        FROM clientes
+        ORDER BY nombre ASC
+    """)
+
+    edit_cliente = None
+    if edit_id:
+        if db.db_kind() == "sqlite":
+            edit_cliente = db.fetch_one("""
+                SELECT id, nombre, documento, telefono, direccion, observaciones, COALESCE(NULLIF(tipo_cobro,''), 'mensual') AS tipo_cobro
+                FROM clientes
+                WHERE id = ?
+            """, [edit_id])
+        else:
+            edit_cliente = db.fetch_one("""
+                SELECT id, nombre, documento, telefono, direccion, observaciones, COALESCE(NULLIF(tipo_cobro,''), 'mensual') AS tipo_cobro
+                FROM clientes
+                WHERE id = %s
+            """, [edit_id])
 
     return templates.TemplateResponse(
         "clientes.html",
-        {"request": request, "user": user, "clientes": clientes},
+        {
+            "request": request,
+            "clientes": clientes,
+            "edit_cliente": edit_cliente,
+            "tipos_cobro": TIPOS_COBRO,
+        }
     )
 
 
-@router.post("/crear")
+@router.post("/clientes/crear")
 def crear_cliente(
-    request: Request,
     nombre: str = Form(...),
     documento: str = Form(""),
     telefono: str = Form(""),
     direccion: str = Form(""),
     observaciones: str = Form(""),
+    tipo_cobro: str = Form("mensual"),
 ):
-    user = require_user(request)
-    if isinstance(user, RedirectResponse):
-        return user
+    tipo_cobro = (tipo_cobro or "").strip().lower()
+    if tipo_cobro not in TIPOS_COBRO:
+        tipo_cobro = "mensual"
 
-    nombre = (nombre or "").strip()
-    documento = (documento or "").strip()
-    telefono = (telefono or "").strip()
-    direccion = (direccion or "").strip()
-    observaciones = (observaciones or "").strip()
-
-    if not nombre:
-        return RedirectResponse("/clientes", status_code=303)
-
-    created_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-
-    conn = get_connection()
-    try:
-        cur = conn.cursor()
-        try:
-            # ✅ SIN codigo_postal
-            cur.execute(
-                """
-                INSERT INTO clientes (nombre, documento, telefono, direccion, observaciones, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (nombre, documento, telefono, direccion, observaciones, created_at),
-            )
-            conn.commit()
-        except Exception:
-            # no tumbar la app
-            pass
-    finally:
-        conn.close()
+    if db.db_kind() == "sqlite":
+        db.execute("""
+            INSERT INTO clientes (nombre, documento, telefono, direccion, observaciones, tipo_cobro)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, [nombre, documento, telefono, direccion, observaciones, tipo_cobro])
+    else:
+        db.execute("""
+            INSERT INTO clientes (nombre, documento, telefono, direccion, observaciones, tipo_cobro)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, [nombre, documento, telefono, direccion, observaciones, tipo_cobro])
 
     return RedirectResponse("/clientes", status_code=303)
 
 
-# ✅ SOLO ADMIN puede eliminar
-@router.post("/eliminar")
-def eliminar_cliente(
-    request: Request,
+@router.post("/clientes/actualizar")
+def actualizar_cliente(
     cliente_id: int = Form(...),
+    nombre: str = Form(...),
+    documento: str = Form(""),
+    telefono: str = Form(""),
+    direccion: str = Form(""),
+    observaciones: str = Form(""),
+    tipo_cobro: str = Form("mensual"),
 ):
-    user = require_admin(request)
-    if isinstance(user, RedirectResponse):
-        return user
+    tipo_cobro = (tipo_cobro or "").strip().lower()
+    if tipo_cobro not in TIPOS_COBRO:
+        tipo_cobro = "mensual"
 
-    conn = get_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("DELETE FROM clientes WHERE id = ?", (cliente_id,))
-        conn.commit()
-    finally:
-        conn.close()
+    if db.db_kind() == "sqlite":
+        db.execute("""
+            UPDATE clientes
+            SET nombre = ?, documento = ?, telefono = ?, direccion = ?, observaciones = ?, tipo_cobro = ?
+            WHERE id = ?
+        """, [nombre, documento, telefono, direccion, observaciones, tipo_cobro, cliente_id])
+    else:
+        db.execute("""
+            UPDATE clientes
+            SET nombre = %s, documento = %s, telefono = %s, direccion = %s, observaciones = %s, tipo_cobro = %s
+            WHERE id = %s
+        """, [nombre, documento, telefono, direccion, observaciones, tipo_cobro, cliente_id])
+
+    return RedirectResponse("/clientes", status_code=303)
+
+
+@router.post("/clientes/eliminar/{cliente_id}")
+def eliminar_cliente(cliente_id: int):
+    # OJO: si Postgres tiene FK con ON DELETE CASCADE en pagos, borra pagos automáticamente.
+    # En SQLite depende de PRAGMA foreign_keys; por seguridad, borra pagos primero.
+    if db.db_kind() == "sqlite":
+        db.execute("DELETE FROM pagos WHERE cliente_id = ?", [cliente_id])
+        db.execute("DELETE FROM clientes WHERE id = ?", [cliente_id])
+    else:
+        db.execute("DELETE FROM clientes WHERE id = %s", [cliente_id])
 
     return RedirectResponse("/clientes", status_code=303)
