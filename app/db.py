@@ -2,15 +2,11 @@
 import os
 import sqlite3
 from contextlib import contextmanager
-from urllib.parse import urlparse
 
-# Detecta Postgres por DATABASE_URL (Render) o usa SQLite por DB_PATH
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 DB_PATH = os.getenv("DB_PATH", "bless.db")
 
 _DB_KIND = "postgres" if DATABASE_URL else "sqlite"
-
-# Para evitar re-ejecutar init_db en cada import raro
 _DB_INITIALIZED = False
 
 
@@ -21,30 +17,41 @@ def db_kind() -> str:
 def _sqlite_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    # Activar FK en SQLite (para cascadas si existen)
+    conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
 
 def _postgres_conn():
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
-
-    # Render suele dar postgres://...
-    # psycopg2 acepta postgres:// sin problema, pero forzamos sslmode si no viene.
+    """
+    Python 3.13 en Render: usar psycopg (v3).
+    Dejamos fallback a psycopg2 por compatibilidad local si alguien usa Py viejo.
+    """
     dsn = DATABASE_URL
     if "sslmode=" not in dsn:
         sep = "&" if "?" in dsn else "?"
         dsn = f"{dsn}{sep}sslmode=require"
+
+    # 1) Preferido: psycopg (v3)
+    try:
+        import psycopg
+        from psycopg.rows import dict_row
+
+        # row_factory=dict_row => fetchall devuelve dicts
+        conn = psycopg.connect(dsn, row_factory=dict_row)
+        return conn
+    except ImportError:
+        pass
+
+    # 2) Fallback: psycopg2 (si está instalado y el Python lo soporta)
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
 
     return psycopg2.connect(dsn, cursor_factory=RealDictCursor)
 
 
 @contextmanager
 def get_conn():
-    """
-    Context manager unificado.
-    - SQLite: sqlite3.Connection
-    - Postgres: psycopg2.Connection
-    """
     if _DB_KIND == "sqlite":
         conn = _sqlite_conn()
         try:
@@ -67,25 +74,12 @@ def get_conn():
             conn.close()
 
 
-def _placeholders(n: int) -> str:
-    """
-    Devuelve placeholders según motor:
-    - sqlite: ?,?,?
-    - postgres: %s,%s,%s
-    """
-    if n <= 0:
-        return ""
-    ph = "?" if _DB_KIND == "sqlite" else "%s"
-    return ",".join([ph] * n)
-
-
 def fetch_all(sql: str, params=None):
     params = params or []
     with get_conn() as conn:
         cur = conn.cursor()
         cur.execute(sql, params)
-        rows = cur.fetchall()
-        return rows
+        return cur.fetchall()
 
 
 def fetch_one(sql: str, params=None):
@@ -93,50 +87,25 @@ def fetch_one(sql: str, params=None):
     with get_conn() as conn:
         cur = conn.cursor()
         cur.execute(sql, params)
-        row = cur.fetchone()
-        return row
+        return cur.fetchone()
 
 
 def execute(sql: str, params=None) -> int:
-    """
-    Ejecuta SQL y retorna rowcount.
-    """
     params = params or []
     with get_conn() as conn:
         cur = conn.cursor()
         cur.execute(sql, params)
-        return cur.rowcount
-
-
-def insert_and_get_id(sql_sqlite: str, sql_postgres: str, params=None) -> int:
-    """
-    Inserta y retorna ID.
-    - SQLite: usa lastrowid
-    - Postgres: requiere RETURNING id
-    """
-    params = params or []
-    with get_conn() as conn:
-        cur = conn.cursor()
-        if _DB_KIND == "sqlite":
-            cur.execute(sql_sqlite, params)
-            return int(cur.lastrowid)
-        else:
-            cur.execute(sql_postgres, params)
-            row = cur.fetchone()
-            return int(row["id"]) if isinstance(row, dict) else int(row[0])
+        # psycopg3: rowcount existe; sqlite también
+        return getattr(cur, "rowcount", 0) or 0
 
 
 # --------------------------
-# MIGRACIÓN / SCHEMA SEGURO
+# Schema helpers
 # --------------------------
 
 def _sqlite_table_columns(table: str) -> set[str]:
     rows = fetch_all(f"PRAGMA table_info({table})")
-    cols = set()
-    for r in rows:
-        # sqlite3.Row: r["name"]
-        cols.add(r["name"])
-    return cols
+    return {r["name"] for r in rows}
 
 
 def _postgres_table_columns(table: str) -> set[str]:
@@ -148,7 +117,6 @@ def _postgres_table_columns(table: str) -> set[str]:
     rows = fetch_all(sql, [table])
     cols = set()
     for r in rows:
-        # RealDictCursor => dict
         if isinstance(r, dict):
             cols.add(r["column_name"])
         else:
@@ -162,8 +130,37 @@ def table_columns(table: str) -> set[str]:
     return _postgres_table_columns(table)
 
 
+def _add_column_if_missing(table: str, column: str, col_type: str, default_sql: str | None = None):
+    cols = table_columns(table)
+    if column in cols:
+        return
+
+    if _DB_KIND == "sqlite":
+        if default_sql:
+            execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type} DEFAULT {default_sql}")
+        else:
+            execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+    else:
+        if default_sql:
+            execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {col_type} DEFAULT {default_sql}")
+        else:
+            execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {col_type}")
+
+
+# --------------------------
+# Create tables
+# --------------------------
+
 def _create_tables_sqlite():
-    # Nota: SQLite no soporta DROP COLUMN fácil -> solo dejamos de usar codigo_postal.
+    execute("""
+    CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'user'
+    )
+    """)
+
     execute("""
     CREATE TABLE IF NOT EXISTS clientes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -182,21 +179,29 @@ def _create_tables_sqlite():
         cliente_id INTEGER NOT NULL,
         fecha TEXT NOT NULL,
         tipo TEXT NOT NULL, -- 'abono' o 'prestamo'
-        monto REAL DEFAULT 0, -- abono
+        monto REAL DEFAULT 0,
         seguro REAL DEFAULT 0,
-        monto_entregado REAL DEFAULT 0, -- prestamo
-        interes_mensual REAL DEFAULT 20, -- porcentaje
+        monto_entregado REAL DEFAULT 0,
+        interes_mensual REAL DEFAULT 20,
         frecuencia TEXT DEFAULT 'mensual',
         FOREIGN KEY(cliente_id) REFERENCES clientes(id)
     )
     """)
 
-    # Índices útiles
     execute("CREATE INDEX IF NOT EXISTS idx_pagos_cliente_id ON pagos(cliente_id)")
     execute("CREATE INDEX IF NOT EXISTS idx_pagos_fecha ON pagos(fecha)")
 
 
 def _create_tables_postgres():
+    execute("""
+    CREATE TABLE IF NOT EXISTS usuarios (
+        id SERIAL PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'user'
+    )
+    """)
+
     execute("""
     CREATE TABLE IF NOT EXISTS clientes (
         id SERIAL PRIMARY KEY,
@@ -227,54 +232,35 @@ def _create_tables_postgres():
     execute("CREATE INDEX IF NOT EXISTS idx_pagos_fecha ON pagos(fecha)")
 
 
-def _add_column_if_missing(table: str, column: str, col_type: str, default_sql: str | None = None):
-    cols = table_columns(table)
-    if column in cols:
-        return
-
-    if _DB_KIND == "sqlite":
-        # SQLite: ALTER TABLE ADD COLUMN permite DEFAULT literal
-        if default_sql:
-            execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type} DEFAULT {default_sql}")
-        else:
-            execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
-    else:
-        # Postgres: ADD COLUMN IF NOT EXISTS
-        if default_sql:
-            execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {col_type} DEFAULT {default_sql}")
-        else:
-            execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {col_type}")
-
+# --------------------------
+# Data migrations
+# --------------------------
 
 def _backfill_documento_from_cedula():
-    """
-    Si existía clientes.cedula y no existe documento (o documento vacío), copiar.
-    """
     cols = table_columns("clientes")
     if "cedula" not in cols:
         return
+
     if "documento" not in cols:
         _add_column_if_missing("clientes", "documento", "TEXT")
 
-    # Copiar cedula -> documento donde documento esté NULL o vacío
     if _DB_KIND == "sqlite":
         execute("""
         UPDATE clientes
         SET documento = COALESCE(documento, cedula)
-        WHERE (documento IS NULL OR TRIM(documento) = '') AND cedula IS NOT NULL AND TRIM(cedula) <> ''
+        WHERE (documento IS NULL OR TRIM(documento) = '')
+          AND cedula IS NOT NULL AND TRIM(cedula) <> ''
         """)
     else:
         execute("""
         UPDATE clientes
         SET documento = COALESCE(documento, cedula)
-        WHERE (documento IS NULL OR BTRIM(documento) = '') AND cedula IS NOT NULL AND BTRIM(cedula) <> ''
+        WHERE (documento IS NULL OR BTRIM(documento) = '')
+          AND cedula IS NOT NULL AND BTRIM(cedula) <> ''
         """)
 
 
 def _backfill_frecuencia_default():
-    """
-    Si pagos.frecuencia está NULL/vacía, dejar 'mensual' (requisito: si vacío, asumir mensual).
-    """
     cols = table_columns("pagos")
     if "frecuencia" not in cols:
         return
@@ -293,27 +279,64 @@ def _backfill_frecuencia_default():
         """)
 
 
+def _ensure_role_column_usuarios():
+    cols = table_columns("usuarios")
+    if "role" not in cols:
+        _add_column_if_missing("usuarios", "role", "TEXT", "'user'")
+
+
 def init_db():
     global _DB_INITIALIZED
     if _DB_INITIALIZED:
         return
 
-    # 1) Crear tablas base
+    # 1) Base tables
     if _DB_KIND == "sqlite":
         _create_tables_sqlite()
     else:
         _create_tables_postgres()
 
-    # 2) Migraciones seguras (ADD COLUMN sin tumbar)
+    # 2) Safe migrations
     _add_column_if_missing("clientes", "tipo_cobro", "TEXT", "'mensual'")
     _add_column_if_missing("pagos", "frecuencia", "TEXT", "'mensual'")
+    _add_column_if_missing("clientes", "documento", "TEXT")
 
-    # 3) Normalizaciones
+    _ensure_role_column_usuarios()
+
+    # 3) Backfills
     _backfill_documento_from_cedula()
     _backfill_frecuencia_default()
 
     _DB_INITIALIZED = True
 
 
-# Ejecuta migración automáticamente (seguro)
+def ensure_admin(username: str, password: str):
+    """
+    Crea admin si no existe.
+    Mantiene password tal cual (como venías haciendo), para NO romper tu login.
+    """
+    if not username or not password:
+        return
+
+    init_db()
+
+    if _DB_KIND == "sqlite":
+        row = fetch_one("SELECT id FROM usuarios WHERE username = ?", [username])
+        if row:
+            return
+        execute(
+            "INSERT INTO usuarios (username, password, role) VALUES (?, ?, ?)",
+            [username, password, "admin"],
+        )
+    else:
+        row = fetch_one("SELECT id FROM usuarios WHERE username = %s", [username])
+        if row:
+            return
+        execute(
+            "INSERT INTO usuarios (username, password, role) VALUES (%s, %s, %s)",
+            [username, password, "admin"],
+        )
+
+
+# Import-time init (para que migre solo al arrancar)
 init_db()
