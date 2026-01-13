@@ -1,5 +1,6 @@
-﻿__pycache__/
+﻿bless.db
+scripts/
+__pycache__/
 *.pyc
-*.pyo
-*.zip
-backup/
+.venv/
+.env
