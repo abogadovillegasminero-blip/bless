@@ -4,19 +4,17 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h2 class="m-0">🚨 Alertas de mora</h2>
-  <a class="btn btn-outline-secondary btn-sm" href="/saldos">Volver a Saldos</a>
+  <a class="btn btn-outline-secondary btn-sm" href="/saldos">Volver</a>
 </div>
 
 <div class="card p-3">
-  <p class="text-muted mb-3">Clientes con deuda activa y vencimiento superado según su frecuencia.</p>
-
   <div class="table-responsive">
     <table class="table table-sm table-striped align-middle">
       <thead>
         <tr>
           <th>Cliente</th>
           <th>Frecuencia</th>
-          <th>Total deuda</th>
+          <th>Total</th>
           <th>Mora</th>
         </tr>
       </thead>
@@ -25,7 +23,7 @@
           <tr>
             <td>{{ r.nombre }}</td>
             <td>{{ (r.frecuencia or "mensual")|capitalize }}</td>
-            <td><strong>{{ "%.2f"|format(r.total_deuda) }}</strong></td>
+            <td><strong>{{ "%.2f"|format(r.total) }}</strong></td>
             <td><span class="badge bg-danger">{{ r.mora_dias }} días</span></td>
           </tr>
         {% endfor %}
