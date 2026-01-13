@@ -5,19 +5,22 @@ from fastapi.templating import Jinja2Templates
 from datetime import datetime
 
 from app import db
+from app.auth import require_user
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
 FRECUENCIAS = ["diario", "semanal", "quincenal", "mensual"]
 
-
 def _now_str():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-
 @router.get("/pagos")
 def pagos_home(request: Request):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
     clientes = db.fetch_all("""
         SELECT id, nombre, documento
         FROM clientes
@@ -38,74 +41,62 @@ def pagos_home(request: Request):
         FROM pagos p
         JOIN clientes c ON c.id = p.cliente_id
         ORDER BY p.id DESC
-        LIMIT 30
+        LIMIT 50
     """)
 
-    resp = templates.TemplateResponse(
+    return templates.TemplateResponse(
         "pagos.html",
-        {
-            "request": request,
-            "clientes": clientes,
-            "movimientos": movimientos,
-            "frecuencias": FRECUENCIAS,
-        },
+        {"request": request, "user": user, "clientes": clientes, "movimientos": movimientos, "frecuencias": FRECUENCIAS},
     )
-
-    # Anti-cache (especialmente útil si hay service worker / PWA)
-    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    resp.headers["Pragma"] = "no-cache"
-    resp.headers["Expires"] = "0"
-    return resp
-
 
 @router.post("/pagos/crear")
 def crear_pago(
     request: Request,
     cliente_id: int = Form(...),
-    tipo: str = Form(...),  # "abono" o "prestamo"
-    monto: float = Form(0),  # abono
+    tipo: str = Form(...),  # abono | prestamo
+    monto: float = Form(0),
     seguro: float = Form(0),
-    monto_entregado: float = Form(0),  # prestamo
+    monto_entregado: float = Form(0),
     interes_mensual: float = Form(20),
     frecuencia: str = Form("mensual"),
 ):
-    tipo = (tipo or "").strip().lower()
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
 
+    tipo = (tipo or "").strip().lower()
     frecuencia = (frecuencia or "").strip().lower()
     if frecuencia not in FRECUENCIAS:
         frecuencia = "mensual"
 
-    if tipo == "abono":
-        frecuencia_db = None
-        monto_entregado_db = 0
-        interes_mensual_db = 0
-        monto_db = float(monto or 0)
-    else:
-        tipo = "prestamo"
-        frecuencia_db = frecuencia
-        monto_entregado_db = float(monto_entregado or 0)
-        interes_mensual_db = float(interes_mensual or 20)
-        monto_db = 0
-
-    seguro_db = float(seguro or 0)
     fecha = _now_str()
+
+    if tipo == "abono":
+        # abono: frecuencia no aplica
+        params = [cliente_id, fecha, "abono", float(monto or 0), float(seguro or 0), 0, 0, None]
+    else:
+        # prestamo
+        params = [cliente_id, fecha, "prestamo", 0, float(seguro or 0), float(monto_entregado or 0), float(interes_mensual or 20), frecuencia]
 
     if db.db_kind() == "sqlite":
         db.execute("""
             INSERT INTO pagos (cliente_id, fecha, tipo, monto, seguro, monto_entregado, interes_mensual, frecuencia)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, [cliente_id, fecha, tipo, monto_db, seguro_db, monto_entregado_db, interes_mensual_db, frecuencia_db])
+        """, params)
     else:
         db.execute("""
             INSERT INTO pagos (cliente_id, fecha, tipo, monto, seguro, monto_entregado, interes_mensual, frecuencia)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, [cliente_id, fecha, tipo, monto_db, seguro_db, monto_entregado_db, interes_mensual_db, frecuencia_db])
+        """, params)
 
     return RedirectResponse("/pagos", status_code=303)
 
-
 @router.post("/pagos/eliminar/{pago_id}")
-def eliminar_pago(pago_id: int):
+def eliminar_pago(request: Request, pago_id: int):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
     if db.db_kind() == "sqlite":
         db.execute("DELETE FROM pagos WHERE id = ?", [pago_id])
     else:
