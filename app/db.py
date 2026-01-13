@@ -9,11 +9,10 @@ DATABASE_URL = (os.getenv("DATABASE_URL") or "").strip()
 def db_kind() -> str:
     return "postgres" if DATABASE_URL else "sqlite"
 
-def _pg_url():
+def _pg_url() -> str:
     url = DATABASE_URL
     if not url:
         return ""
-    # Render a veces requiere sslmode
     if "sslmode=" not in url:
         sep = "&" if "?" in url else "?"
         url = f"{url}{sep}sslmode=require"
@@ -51,7 +50,6 @@ def fetch_all(sql: str, params=None):
         cur = conn.cursor()
         cur.execute(sql, params)
         rows = cur.fetchall()
-        # sqlite Row -> dict-like, postgres already dict
         return [dict(r) for r in rows]
 
 def fetch_one(sql: str, params=None):
@@ -63,7 +61,7 @@ def fetch_one(sql: str, params=None):
         return dict(row) if row else None
 
 # --------------------------
-# DB init + migrations
+# init + migrations
 # --------------------------
 
 def _sqlite_has_column(table: str, col: str) -> bool:
@@ -77,7 +75,6 @@ def _sqlite_add_column(table: str, coldef: str):
     execute(f"ALTER TABLE {table} ADD COLUMN {coldef}")
 
 def _postgres_add_column_if_missing(table: str, col: str, coltype: str, default_sql: str = ""):
-    # PostgreSQL soporta IF NOT EXISTS
     d = f" DEFAULT {default_sql}" if default_sql else ""
     execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {coltype}{d}")
 
@@ -109,10 +106,10 @@ def _create_tables_sqlite():
         fecha TEXT NOT NULL,
         tipo TEXT NOT NULL,                 -- abono | prestamo
         monto REAL DEFAULT 0,               -- abono
-        seguro REAL DEFAULT 0,              -- prestamo o general
+        seguro REAL DEFAULT 0,
         monto_entregado REAL DEFAULT 0,     -- prestamo
         interes_mensual REAL DEFAULT 20,    -- prestamo
-        frecuencia TEXT DEFAULT 'mensual',  -- prestamo (diario/semanal/quincenal/mensual)
+        frecuencia TEXT DEFAULT 'mensual',  -- prestamo
         FOREIGN KEY(cliente_id) REFERENCES clientes(id) ON DELETE CASCADE
     )
     """)
@@ -157,17 +154,17 @@ def _create_tables_postgres():
     execute("CREATE INDEX IF NOT EXISTS idx_pagos_fecha ON pagos(fecha)")
 
 def _migrate_sqlite():
-    # Agregar columnas faltantes sin tumbar nada
-    if not _sqlite_has_column("clientes", "tipo_cobro"):
-        _sqlite_add_column("clientes", "tipo_cobro TEXT DEFAULT 'mensual'")
+    # NO eliminar codigo_postal. Solo asegurar columnas.
     if not _sqlite_has_column("clientes", "codigo_postal"):
         _sqlite_add_column("clientes", "codigo_postal TEXT")
+    if not _sqlite_has_column("clientes", "tipo_cobro"):
+        _sqlite_add_column("clientes", "tipo_cobro TEXT DEFAULT 'mensual'")
     if not _sqlite_has_column("pagos", "frecuencia"):
         _sqlite_add_column("pagos", "frecuencia TEXT DEFAULT 'mensual'")
 
 def _migrate_postgres():
-    _postgres_add_column_if_missing("clientes", "tipo_cobro", "TEXT", "'mensual'")
     _postgres_add_column_if_missing("clientes", "codigo_postal", "TEXT")
+    _postgres_add_column_if_missing("clientes", "tipo_cobro", "TEXT", "'mensual'")
     _postgres_add_column_if_missing("pagos", "frecuencia", "TEXT", "'mensual'")
 
 def init_db():
@@ -181,11 +178,13 @@ def init_db():
 def ensure_admin(username: str, password: str):
     if not username or not password:
         return
-    u = fetch_one("SELECT id FROM usuarios WHERE username = ?" if db_kind()=="sqlite" else "SELECT id FROM usuarios WHERE username = %s",
-                  [username])
-    if u:
-        return
     if db_kind() == "sqlite":
+        u = fetch_one("SELECT id FROM usuarios WHERE username = ?", [username])
+        if u:
+            return
         execute("INSERT INTO usuarios (username, password, role) VALUES (?, ?, ?)", [username, password, "admin"])
     else:
+        u = fetch_one("SELECT id FROM usuarios WHERE username = %s", [username])
+        if u:
+            return
         execute("INSERT INTO usuarios (username, password, role) VALUES (%s, %s, %s)", [username, password, "admin"])
