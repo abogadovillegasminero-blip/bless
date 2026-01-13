@@ -41,7 +41,7 @@ def pagos_home(request: Request):
         FROM pagos p
         JOIN clientes c ON c.id = p.cliente_id
         ORDER BY p.id DESC
-        LIMIT 50
+        LIMIT 80
     """)
 
     return templates.TemplateResponse(
@@ -72,10 +72,9 @@ def crear_pago(
     fecha = _now_str()
 
     if tipo == "abono":
-        # abono: frecuencia no aplica
+        # en abono no aplica frecuencia
         params = [cliente_id, fecha, "abono", float(monto or 0), float(seguro or 0), 0, 0, None]
     else:
-        # prestamo
         params = [cliente_id, fecha, "prestamo", 0, float(seguro or 0), float(monto_entregado or 0), float(interes_mensual or 20), frecuencia]
 
     if db.db_kind() == "sqlite":
