@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="m-0">📊 Contabilidad</h2>
+</div>
+
+<div class="card p-3 mb-3">
+  <form class="row g-2" method="get" action="/contabilidad">
+    <div class="col-md-3">
+      <label class="form-label">Mes (Colombia)</label>
+      <input type="month" class="form-control" name="mes" value="{{ mes }}">
+    </div>
+    <div class="col-md-2 d-flex align-items-end">
+      <button class="btn btn-primary w-100" type="submit">Ver</button>
+    </div>
+  </form>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="card p-3">
+      <h5 class="mb-2">💰 Base del día ({{ hoy }})</h5>
+
+      <form method="post" action="/contabilidad/base" class="row g-2">
+        <input type="hidden" name="fecha" value="{{ hoy }}">
+        <div class="col-8">
+          <input class="form-control" name="base_valor"
+                 placeholder="Ej: 150 (=>150.000) o 150000"
+                 value="{{ (base_hoy.base_valor if base_hoy else 0) }}">
+          <div class="form-text">En pantalla siempre se ve en miles (1000 → 1).</div>
+        </div>
+        <div class="col-4">
+          <button class="btn btn-success w-100" type="submit">Guardar</button>
+        </div>
+      </form>
+
+      <div class="mt-2">
+        <span class="badge bg-secondary">Base (miles): {{ (base_hoy.base_valor if base_hoy else 0)|miles }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card p-3">
+      <h5 class="mb-2">🛡️ Registrar seguro recaudado</h5>
+
+      <form method="post" action="/contabilidad/seguro" class="row g-2">
+        <input type="hidden" name="fecha" value="{{ hoy }}">
+        <div class="col-md-5">
+          <input class="form-control" name="cobrador_username" placeholder="cobrador (username)" required>
+        </div>
+        <div class="col-md-4">
+          <input class="form-control" name="valor" placeholder="Ej: 5 (=>5.000) o 5000" required>
+        </div>
+        <div class="col-md-3">
+          <button class="btn btn-outline-primary w-100" type="submit">Agregar</button>
+        </div>
+      </form>
+
+      <hr>
+
+      <h6 class="mb-2">📅 Seguros recaudados por cobrador (mes {{ mes }})</h6>
+      <div class="table-responsive">
+        <table class="table table-sm table-striped">
+          <thead>
+            <tr>
+              <th>Cobrador</th>
+              <th>Total (miles)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in seguros_por_cobrador %}
+            <tr>
+              <td>{{ s.cobrador_username }}</td>
+              <td>{{ s.total|miles }}</td>
+            </tr>
+            {% endfor %}
+            {% if seguros_por_cobrador|length == 0 %}
+            <tr><td colspan="2" class="text-muted text-center">Sin registros</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mt-1">
+  <div class="col-md-6">
+    <div class="card p-3">
+      <h5 class="mb-2">🧾 Gastos del día ({{ hoy }})</h5>
+
+      <form method="post" action="/contabilidad/gasto" class="row g-2">
+        <input type="hidden" name="fecha" value="{{ hoy }}">
+        <div class="col-md-5">
+          <input class="form-control" name="concepto" placeholder="Concepto" required>
+        </div>
+        <div class="col-md-3">
+          <select class="form-select" name="categoria">
+            {% for c in categorias %}
+              <option value="{{ c }}">{{ c }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <input class="form-control" name="valor" placeholder="Ej: 12 (=>12.000)" required>
+        </div>
+        <div class="col-md-2">
+          <input class="form-control" name="cobrador_username" placeholder="cobrador (opcional)">
+        </div>
+        <div class="col-md-12">
+          <button class="btn btn-danger w-100" type="submit">Registrar gasto</button>
+        </div>
+      </form>
+
+      <div class="table-responsive mt-3">
+        <table class="table table-sm table-striped align-middle">
+          <thead>
+            <tr>
+              <th>Concepto</th>
+              <th>Categoría</th>
+              <th>Cobrador</th>
+              <th>Valor (miles)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for g in gastos_hoy %}
+            <tr>
+              <td>{{ g.concepto }}</td>
+              <td>{{ g.categoria }}</td>
+              <td>{{ g.cobrador_username or '-' }}</td>
+              <td>{{ g.valor|miles }}</td>
+              <td class="text-end">
+                <form method="post" action="/contabilidad/gasto/eliminar/{{ g.id }}" onsubmit="return confirm('¿Eliminar gasto?');">
+                  <button class="btn btn-sm btn-outline-secondary">Eliminar</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+            {% if gastos_hoy|length == 0 %}
+            <tr><td colspan="5" class="text-muted text-center">Sin gastos hoy</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+      <hr>
+
+      <h6 class="mb-2">📦 Gastos del mes ({{ mes }})</h6>
+      <div class="d-flex gap-2 flex-wrap mb-2">
+        <span class="badge bg-dark">Total mes (miles): {{ gastos_mes_total|miles }}</span>
+        {% for x in gastos_por_categoria %}
+          <span class="badge bg-secondary">{{ x.categoria }}: {{ x.total|miles }}</span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card p-3">
+      <h5 class="mb-2">🏦 Monto prestado (mes {{ mes }})</h5>
+      <div class="mb-2">
+        <span class="badge bg-success">Total prestado (miles): {{ prestado_total|miles }}</span>
+      </div>
+
+      <form method="post" action="/contabilidad/prestamo" class="row g-2">
+        <input type="hidden" name="fecha" value="{{ hoy }}">
+        <div class="col-md-3">
+          <input class="form-control" name="valor" placeholder="Ej: 300 (=>300.000)" required>
+        </div>
+        <div class="col-md-3">
+          <input class="form-control" name="cliente_id" placeholder="cliente_id (opcional)">
+        </div>
+        <div class="col-md-3">
+          <input class="form-control" name="cobrador_username" placeholder="cobrador (opcional)">
+        </div>
+        <div class="col-md-3">
+          <input class="form-control" name="observaciones" placeholder="Obs (opcional)">
+        </div>
+        <div class="col-md-12">
+          <button class="btn btn-outline-success w-100" type="submit">Registrar préstamo</button>
+        </div>
+      </form>
+
+      <div class="table-responsive mt-3">
+        <table class="table table-sm table-striped align-middle">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Cliente</th>
+              <th>Cobrador</th>
+              <th>Valor (miles)</th>
+              <th>Obs</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in prestamos_lista %}
+            <tr>
+              <td>{{ p.fecha }}</td>
+              <td>{{ p.cliente or '-' }}</td>
+              <td>{{ p.cobrador_username or '-' }}</td>
+              <td>{{ p.valor|miles }}</td>
+              <td>{{ p.observaciones or '' }}</td>
+            </tr>
+            {% endfor %}
+            {% if prestamos_lista|length == 0 %}
+            <tr><td colspan="5" class="text-muted text-center">Sin préstamos en este mes</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+      <hr>
+
+      <div class="alert alert-info m-0">
+        <strong>Lectura fácil:</strong><br>
+        - <strong>Base</strong> = dinero inicial del día.<br>
+        - <strong>Seguros</strong> = ingresos mensuales por cobrador.<br>
+        - <strong>Prestado</strong> = desembolsos del mes.<br>
+        - <strong>Gastos</strong> = salidas del día y del mes.<br>
+        Todo mostrado en <strong>miles</strong> (1000 → 1).
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
