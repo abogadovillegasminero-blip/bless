@@ -1,81 +1,70 @@
 # app/db.py
 import os
 import sqlite3
-import time
 from contextlib import contextmanager
-from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
+from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 
-# ----------------------------
+# -----------------------
 # Config
-# ----------------------------
+# -----------------------
 DB_PATH = os.getenv("DB_PATH", "bless.db")
-DATABASE_URL = os.getenv("DATABASE_URL")  # En Render debe existir
+DATABASE_URL = os.getenv("DATABASE_URL")  # Render Postgres (recomendado: Internal Database URL)
 
 
-# ----------------------------
-# Helpers
-# ----------------------------
-def _is_postgres() -> bool:
-    return bool(DATABASE_URL and DATABASE_URL.strip())
-
-
+# -----------------------
+# Helpers URL Postgres
+# -----------------------
 def _normalize_database_url(url: str) -> str:
     """
-    Render/Neon a veces entregan:
-      - postgres://  (en vez de postgresql://)
-    y a veces no trae sslmode.
-
-    psycopg acepta postgresql:// y normalmente postgres:// también,
-    pero normalizamos y forzamos sslmode=require si no está.
+    Render a veces entrega 'postgres://', psycopg prefiere 'postgresql://'.
+    Además forzamos sslmode=require si no viene.
     """
     if not url:
         return url
 
-    url = url.strip()
-
-    # Normaliza esquema
     if url.startswith("postgres://"):
-        url = "postgresql://" + url[len("postgres://"):]
+        url = "postgresql://" + url[len("postgres://") :]
 
     parsed = urlparse(url)
     q = dict(parse_qsl(parsed.query, keep_blank_values=True))
-
-    # Fuerza sslmode si no existe (Render/Neon suelen requerir SSL)
     if "sslmode" not in q:
         q["sslmode"] = "require"
 
-    new_query = urlencode(q)
-    parsed = parsed._replace(query=new_query)
-    return urlunparse(parsed)
+    new_query = urlencode(q, doseq=True)
+    return urlunparse(parsed._replace(query=new_query))
+
+
+def _using_postgres() -> bool:
+    return bool(DATABASE_URL)
 
 
 def _adapt_sql_for_postgres(sql: str) -> str:
     """
-    Convierte placeholders SQLite style '?' a psycopg style '%s'
-    para que el mismo código (auth.py, clientes.py, etc.) no reviente.
+    Convierte placeholders SQLite (?) a placeholders psycopg (%s).
+    Esto permite que el resto del proyecto siga usando '?' sin romper en Postgres.
     """
-    # OJO: esto asume que '?' se usa solo como placeholder.
-    # En este proyecto aplica (SELECT ... WHERE x = ?).
     return sql.replace("?", "%s")
 
 
-# ----------------------------
-# Cursor/Connection Proxies
-# ----------------------------
-class CursorProxy:
-    def __init__(self, inner, use_postgres: bool):
-        self._cur = inner
-        self._pg = use_postgres
+# -----------------------
+# Wrappers para unificar execute/cursor
+# -----------------------
+class CursorWrapper:
+    def __init__(self, real_cursor, is_postgres: bool):
+        self._cur = real_cursor
+        self._is_pg = is_postgres
 
-    def execute(self, sql, params=None):
-        if self._pg and isinstance(sql, str):
-            sql = _adapt_sql_for_postgres(sql)
+    def execute(self, sql: str, params=None):
         if params is None:
-            return self._cur.execute(sql)
+            params = ()
+
+        if self._is_pg:
+            sql = _adapt_sql_for_postgres(sql)
+
         return self._cur.execute(sql, params)
 
-    def executemany(self, sql, seq_of_params):
-        if self._pg and isinstance(sql, str):
+    def executemany(self, sql: str, seq_of_params):
+        if self._is_pg:
             sql = _adapt_sql_for_postgres(sql)
         return self._cur.executemany(sql, seq_of_params)
 
@@ -85,27 +74,30 @@ class CursorProxy:
     def fetchall(self):
         return self._cur.fetchall()
 
-    def __iter__(self):
-        return iter(self._cur)
-
-    def close(self):
-        try:
-            return self._cur.close()
-        except Exception:
-            return None
-
     @property
-    def description(self):
-        return getattr(self._cur, "description", None)
+    def rowcount(self):
+        return getattr(self._cur, "rowcount", None)
+
+    def __getattr__(self, name):
+        return getattr(self._cur, name)
 
 
-class ConnectionProxy:
-    def __init__(self, inner, use_postgres: bool):
-        self._conn = inner
-        self._pg = use_postgres
+class ConnWrapper:
+    def __init__(self, real_conn, is_postgres: bool):
+        self._conn = real_conn
+        self._is_pg = is_postgres
 
     def cursor(self):
-        return CursorProxy(self._conn.cursor(), self._pg)
+        if self._is_pg:
+            # psycopg3 rows como dict para parecerse a sqlite Row (acceso por clave)
+            from psycopg.rows import dict_row
+
+            cur = self._conn.cursor(row_factory=dict_row)
+            return CursorWrapper(cur, is_postgres=True)
+
+        # SQLite
+        cur = self._conn.cursor()
+        return CursorWrapper(cur, is_postgres=False)
 
     def commit(self):
         return self._conn.commit()
@@ -116,66 +108,191 @@ class ConnectionProxy:
     def close(self):
         return self._conn.close()
 
-    # Para usos directos (por si algún módulo accede atributos)
     def __getattr__(self, name):
         return getattr(self._conn, name)
 
 
-# ----------------------------
-# Public API
-# ----------------------------
+# -----------------------
+# Conexión
+# -----------------------
 def get_connection():
     """
-    Devuelve una conexión (proxy) ya lista para:
-      - SQLite local (con row_factory)
-      - Postgres (psycopg) en Render
+    Compatibilidad con imports existentes (app.auth y otros).
+    Retorna un ConnWrapper (no context manager).
     """
-    if _is_postgres():
+    if _using_postgres():
         import psycopg
-        from psycopg.rows import dict_row
 
         url = _normalize_database_url(DATABASE_URL)
-        # row_factory=dict_row => fetchone/fetchall devuelven dicts
-        conn = psycopg.connect(url, row_factory=dict_row)
-        return ConnectionProxy(conn, use_postgres=True)
+        conn = psycopg.connect(url)
+        return ConnWrapper(conn, is_postgres=True)
 
-    # SQLite local
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    return ConnectionProxy(conn, use_postgres=False)
+    return ConnWrapper(conn, is_postgres=False)
 
 
 @contextmanager
-def get_conn(retries: int = 10, sleep_s: float = 1.0):
+def get_conn():
     """
-    Context manager robusto.
-    Render a veces tarda en levantar Postgres: reintenta.
+    Uso recomendado: with get_conn() as conn:
     """
-    last_err = None
-    for _ in range(max(1, retries)):
+    conn = get_connection()
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
         try:
-            conn = get_connection()
-            try:
-                yield conn
-                return
-            finally:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
-        except Exception as e:
-            last_err = e
-            time.sleep(sleep_s)
+            conn.rollback()
+        except Exception:
+            pass
+        raise
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
-    raise last_err
+
+def execute(sql: str, params=None):
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(sql, params or ())
+        return cur
+
+
+# -----------------------
+# Migraciones / Schema
+# -----------------------
+def _sqlite_column_exists(conn: ConnWrapper, table: str, column: str) -> bool:
+    cur = conn.cursor()
+    cur.execute(f"PRAGMA table_info({table})")
+    cols = [r["name"] if isinstance(r, sqlite3.Row) else r.get("name") for r in cur.fetchall()]
+    return column in cols
+
+
+def _sqlite_table_exists(conn: ConnWrapper, table: str) -> bool:
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name = ?", (table,))
+    return cur.fetchone() is not None
+
+
+def _create_tables_sqlite():
+    with get_conn() as conn:
+        cur = conn.cursor()
+
+        # usuarios
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS usuarios (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'user'
+            )
+            """
+        )
+
+        # clientes
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS clientes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT NOT NULL,
+                documento TEXT,
+                telefono TEXT,
+                direccion TEXT,
+                codigo_postal TEXT,
+                tipo_cobro TEXT DEFAULT 'mensual',
+                observaciones TEXT,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+            """
+        )
+
+        # pagos
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pagos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cliente_id INTEGER NOT NULL,
+                fecha TEXT NOT NULL,
+                valor REAL NOT NULL,
+                observaciones TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY(cliente_id) REFERENCES clientes(id) ON DELETE CASCADE
+            )
+            """
+        )
+
+        # ---- Migraciones seguras (agrega columnas si faltan) ----
+        if _sqlite_table_exists(conn, "clientes"):
+            if not _sqlite_column_exists(conn, "clientes", "tipo_cobro"):
+                cur.execute("ALTER TABLE clientes ADD COLUMN tipo_cobro TEXT DEFAULT 'mensual'")
+            if not _sqlite_column_exists(conn, "clientes", "codigo_postal"):
+                cur.execute("ALTER TABLE clientes ADD COLUMN codigo_postal TEXT")
+
+        # Nota: SQLite no permite DROP COLUMN fácil.
+        # Si no quieres usar codigo_postal, se oculta desde el template, no aquí.
+
+
+def _create_tables_postgres():
+    with get_conn() as conn:
+        cur = conn.cursor()
+
+        # usuarios
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS usuarios (
+                id SERIAL PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'user'
+            )
+            """
+        )
+
+        # clientes
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS clientes (
+                id SERIAL PRIMARY KEY,
+                nombre TEXT NOT NULL,
+                documento TEXT,
+                telefono TEXT,
+                direccion TEXT,
+                codigo_postal TEXT,
+                tipo_cobro TEXT DEFAULT 'mensual',
+                observaciones TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+            """
+        )
+
+        # pagos
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pagos (
+                id SERIAL PRIMARY KEY,
+                cliente_id INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+                fecha DATE NOT NULL,
+                valor NUMERIC NOT NULL,
+                observaciones TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+            """
+        )
+
+        # Migraciones seguras
+        cur.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS tipo_cobro TEXT DEFAULT 'mensual'")
+        cur.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS codigo_postal TEXT")
 
 
 def init_db():
     """
-    Crea tablas en SQLite o Postgres.
-    Importante: incluye codigo_postal y tipo_cobro.
+    Llamada en startup.
     """
-    if _is_postgres():
+    if _using_postgres():
         _create_tables_postgres()
     else:
         _create_tables_sqlite()
@@ -184,134 +301,18 @@ def init_db():
 def ensure_admin(username: str, password: str):
     """
     Crea admin si no existe.
-    Nota: mantiene password tal cual (sin hash) para no romper login actual.
     """
     if not username or not password:
         return
 
     with get_conn() as conn:
         cur = conn.cursor()
-
-        # ¿Existe?
         cur.execute("SELECT id FROM usuarios WHERE username = ?", (username,))
         row = cur.fetchone()
-
         if row:
             return
 
-        # Inserta admin
         cur.execute(
             "INSERT INTO usuarios (username, password, role) VALUES (?, ?, ?)",
             (username, password, "admin"),
         )
-        conn.commit()
-
-
-# ----------------------------
-# SQLite schema
-# ----------------------------
-def _create_tables_sqlite():
-    with get_conn() as conn:
-        cur = conn.cursor()
-
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS usuarios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'user',
-            created_at TEXT DEFAULT (datetime('now'))
-        )
-        """)
-
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS clientes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre TEXT NOT NULL,
-            documento TEXT,
-            telefono TEXT,
-            direccion TEXT,
-            codigo_postal TEXT,
-            observaciones TEXT,
-            tipo_cobro TEXT DEFAULT 'mensual',
-            created_at TEXT DEFAULT (datetime('now'))
-        )
-        """)
-
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS pagos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            cliente_id INTEGER NOT NULL,
-            fecha TEXT NOT NULL,
-            tipo TEXT NOT NULL DEFAULT 'pago',
-            monto REAL NOT NULL DEFAULT 0,
-            seguro REAL NOT NULL DEFAULT 0,
-            monto_entregado REAL NOT NULL DEFAULT 0,
-            interes_mensual REAL NOT NULL DEFAULT 0,
-            frecuencia TEXT DEFAULT 'mensual',
-            created_at TEXT DEFAULT (datetime('now')),
-            FOREIGN KEY(cliente_id) REFERENCES clientes(id) ON DELETE CASCADE
-        )
-        """)
-
-        # índices útiles
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_pagos_cliente_fecha ON pagos(cliente_id, fecha)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_clientes_tipo_cobro ON clientes(tipo_cobro)")
-
-        conn.commit()
-
-
-# ----------------------------
-# Postgres schema
-# ----------------------------
-def _create_tables_postgres():
-    with get_conn() as conn:
-        cur = conn.cursor()
-
-        # usuarios
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS usuarios (
-            id SERIAL PRIMARY KEY,
-            username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'user',
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-        """)
-
-        # clientes (mantiene codigo_postal + tipo_cobro)
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS clientes (
-            id SERIAL PRIMARY KEY,
-            nombre TEXT NOT NULL,
-            documento TEXT,
-            telefono TEXT,
-            direccion TEXT,
-            codigo_postal TEXT,
-            observaciones TEXT,
-            tipo_cobro TEXT DEFAULT 'mensual',
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-        """)
-
-        # pagos
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS pagos (
-            id SERIAL PRIMARY KEY,
-            cliente_id INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
-            fecha DATE NOT NULL,
-            tipo TEXT NOT NULL DEFAULT 'pago',
-            monto NUMERIC(14,2) NOT NULL DEFAULT 0,
-            seguro NUMERIC(14,2) NOT NULL DEFAULT 0,
-            monto_entregado NUMERIC(14,2) NOT NULL DEFAULT 0,
-            interes_mensual NUMERIC(14,2) NOT NULL DEFAULT 0,
-            frecuencia TEXT DEFAULT 'mensual',
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-        """)
-
-        # índices
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_pagos_cliente_fecha ON pagos(cliente_id, fecha)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_clientes_tipo_cobro ON clientes(tipo_cobro)")
-
-        conn.commit()
