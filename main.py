@@ -44,6 +44,10 @@ def startup_event():
 
 
 templates = Jinja2Templates(directory="templates")
+from app.utils import fmt_co, money_miles
+
+templates.env.filters["fmt_co"] = fmt_co
+templates.env.filters["miles"] = money_miles
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
