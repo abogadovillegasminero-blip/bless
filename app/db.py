@@ -59,6 +59,18 @@ def get_connection():
 
 @contextmanager
 def get_conn():
+    from contextlib import contextmanager
+
+@contextmanager
+def get_connection():
+    """
+    Compatibilidad con código viejo (auth.py) que hace:
+      from app.db import get_connection
+      with get_connection() as conn:
+          ...
+    """
+    with get_conn() as conn:
+        yield conn
     """
     Context manager recomendado para el resto del código.
     """
