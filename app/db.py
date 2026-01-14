@@ -4,38 +4,64 @@ import sqlite3
 from contextlib import contextmanager
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 
-# =========================
-# Config
-# =========================
 DB_PATH = os.getenv("DB_PATH", "bless.db")
-DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("DATABASE_URL_RENDER") or os.getenv("DATABASE")
+DATABASE_URL = os.getenv("DATABASE_URL")  # Render Postgres
+ALLOW_SQLITE_FALLBACK = os.getenv("ALLOW_SQLITE_FALLBACK", "1") == "1"
 
-# =========================
-# Helpers
-# =========================
-def _normalize_database_url(url: str) -> str:
+
+def _is_postgres_url(url: str | None) -> bool:
+    if not url:
+        return False
+    u = url.lower()
+    return u.startswith("postgres://") or u.startswith("postgresql://")
+
+
+def _normalize_database_url(url: str | None) -> str | None:
     """
-    Render a veces entrega 'postgres://'. psycopg3 acepta 'postgresql://'.
-    También forzamos sslmode=require si no viene.
+    - Render a veces entrega postgres://
+    - psycopg acepta postgresql://
+    - Forzamos sslmode=require si no viene
     """
     if not url:
         return url
 
     if url.startswith("postgres://"):
-        url = "postgresql://" + url[len("postgres://") :]
+        url = "postgresql://" + url[len("postgres://"):]
 
     parsed = urlparse(url)
-    qs = dict(parse_qsl(parsed.query))
-
+    qs = dict(parse_qsl(parsed.query, keep_blank_values=True))
     if "sslmode" not in qs:
         qs["sslmode"] = "require"
 
-    new_query = urlencode(qs)
-    return urlunparse(parsed._replace(query=new_query))
+    new_query = urlencode(qs, doseq=True)
+    parsed = parsed._replace(query=new_query)
+    return urlunparse(parsed)
 
 
 def using_postgres() -> bool:
-    return bool(DATABASE_URL)
+    return _is_postgres_url(DATABASE_URL)
+
+
+def get_connection():
+    """
+    Devuelve conexión (sqlite3 o psycopg) con una interfaz compatible:
+    - conn.cursor()
+    - commit / rollback / close
+    """
+    if using_postgres():
+        url = _normalize_database_url(DATABASE_URL)
+        try:
+            import psycopg  # psycopg3
+            from psycopg.rows import dict_row
+            conn = psycopg.connect(url, row_factory=dict_row)
+            return conn
+        except Exception as e:
+            # Si Postgres está mal (DNS, URL, etc), evitamos tumbar el deploy si se permite fallback.
+            if ALLOW_SQLITE_FALLBACK:
+                return _sqlite_conn()
+            raise e
+
+    return _sqlite_conn()
 
 
 def _sqlite_conn():
@@ -44,37 +70,27 @@ def _sqlite_conn():
     return conn
 
 
-def _postgres_conn():
-    # psycopg3
-    import psycopg
-
-    url = _normalize_database_url(DATABASE_URL)
-    # sslmode ya va en la URL (pero Render exige SSL)
-    return psycopg.connect(url)
-
-
-# =========================
-# Public API (Compat)
-# =========================
-def get_connection():
-    """
-    IMPORTANTE: algunos módulos importan `get_connection` directo.
-    Retorna una conexión "directa" (NO contextmanager).
-    """
-    if using_postgres():
-        return _postgres_conn()
-    return _sqlite_conn()
-
-
 @contextmanager
 def get_conn():
     """
-    Context manager correcto: SIEMPRE hace yield de la conexión.
-    Esto evita el error: TypeError: 'NoneType' object is not an iterator
+    Context manager seguro:
+    - SIEMPRE yield una conexión válida
+    - commit/rollback automático
     """
     conn = get_connection()
     try:
         yield conn
+        try:
+            conn.commit()
+        except Exception:
+            # Algunas conexiones/operaciones pueden no requerir commit explícito
+            pass
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         try:
             conn.close()
@@ -82,162 +98,186 @@ def get_conn():
             pass
 
 
-def execute(sql: str, params=None, *, fetchone=False, fetchall=False):
-    """
-    Ejecuta SQL con commit y opcional fetch.
-    Compatible con sqlite3.Row y psycopg3.
-    """
-    if params is None:
-        params = ()
-
-    with get_conn() as conn:
-        cur = conn.cursor()
-        cur.execute(sql, params)
-
-        # commit para INSERT/UPDATE/DDL
-        try:
-            conn.commit()
-        except Exception:
-            pass
-
-        if fetchone:
-            return cur.fetchone()
-        if fetchall:
-            return cur.fetchall()
-        return None
+def _sqlite_has_column(conn, table: str, col: str) -> bool:
+    cur = conn.cursor()
+    cur.execute(f"PRAGMA table_info({table})")
+    cols = [r["name"] for r in cur.fetchall()]
+    return col in cols
 
 
-# =========================
-# Schema
-# =========================
-def _create_tables_sqlite():
-    execute(
-        """
-        CREATE TABLE IF NOT EXISTS usuarios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'user'
-        )
-        """
+def _sqlite_add_column(conn, table: str, col: str, coltype: str, default_sql: str | None = None):
+    if _sqlite_has_column(conn, table, col):
+        return
+    cur = conn.cursor()
+    sql = f"ALTER TABLE {table} ADD COLUMN {col} {coltype}"
+    if default_sql:
+        sql += f" DEFAULT {default_sql}"
+    cur.execute(sql)
+
+
+def _create_tables_sqlite(conn):
+    cur = conn.cursor()
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'user',
+        created_at TEXT DEFAULT (datetime('now'))
     )
+    """)
 
-    execute(
-        """
-        CREATE TABLE IF NOT EXISTS clientes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre TEXT NOT NULL,
-            documento TEXT,
-            telefono TEXT,
-            direccion TEXT,
-            codigo_postal TEXT,
-            observaciones TEXT,
-            tipo_cobro TEXT DEFAULT 'mensual',
-            creado TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS clientes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL,
+        documento TEXT,
+        telefono TEXT,
+        direccion TEXT,
+        codigo_postal TEXT,
+        observaciones TEXT,
+        tipo_cobro TEXT DEFAULT 'mensual',
+        created_at TEXT DEFAULT (datetime('now'))
     )
+    """)
 
-    execute(
-        """
-        CREATE TABLE IF NOT EXISTS pagos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            cliente_id INTEGER NOT NULL,
-            fecha TEXT NOT NULL,
-            tipo TEXT NOT NULL,
-            monto REAL NOT NULL DEFAULT 0,
-            seguro REAL NOT NULL DEFAULT 0,
-            monto_entregado REAL NOT NULL DEFAULT 0,
-            interes_mensual REAL NOT NULL DEFAULT 0,
-            frecuencia TEXT DEFAULT 'mensual',
-            FOREIGN KEY(cliente_id) REFERENCES clientes(id) ON DELETE CASCADE
-        )
-        """
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS pagos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cliente_id INTEGER NOT NULL,
+        fecha TEXT NOT NULL,
+        tipo TEXT DEFAULT 'abono',
+        monto REAL DEFAULT 0,
+        seguro REAL DEFAULT 0,
+        monto_entregado REAL DEFAULT 0,
+        interes_mensual REAL DEFAULT 0,
+        frecuencia TEXT DEFAULT 'mensual',
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY(cliente_id) REFERENCES clientes(id) ON DELETE CASCADE
     )
+    """)
+
+    # Mini-migraciones: por si vienes de versiones anteriores
+    _sqlite_add_column(conn, "clientes", "codigo_postal", "TEXT")
+    _sqlite_add_column(conn, "clientes", "tipo_cobro", "TEXT", "'mensual'")
+    _sqlite_add_column(conn, "pagos", "frecuencia", "TEXT", "'mensual'")
+    _sqlite_add_column(conn, "pagos", "monto_entregado", "REAL", "0")
+    _sqlite_add_column(conn, "pagos", "interes_mensual", "REAL", "0")
+
+    conn.commit()
 
 
-def _create_tables_postgres():
-    # Nota: SERIAL para ids, y timestamp default.
-    execute(
-        """
-        CREATE TABLE IF NOT EXISTS usuarios (
-            id SERIAL PRIMARY KEY,
-            username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'user'
-        )
-        """
+def _create_tables_postgres(conn):
+    cur = conn.cursor()
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS usuarios (
+        id SERIAL PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'user',
+        created_at TIMESTAMP DEFAULT NOW()
     )
+    """)
 
-    execute(
-        """
-        CREATE TABLE IF NOT EXISTS clientes (
-            id SERIAL PRIMARY KEY,
-            nombre TEXT NOT NULL,
-            documento TEXT,
-            telefono TEXT,
-            direccion TEXT,
-            codigo_postal TEXT,
-            observaciones TEXT,
-            tipo_cobro TEXT DEFAULT 'mensual',
-            creado TIMESTAMP DEFAULT NOW()
-        )
-        """
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS clientes (
+        id SERIAL PRIMARY KEY,
+        nombre TEXT NOT NULL,
+        documento TEXT,
+        telefono TEXT,
+        direccion TEXT,
+        codigo_postal TEXT,
+        observaciones TEXT,
+        tipo_cobro TEXT DEFAULT 'mensual',
+        created_at TIMESTAMP DEFAULT NOW()
     )
+    """)
 
-    execute(
-        """
-        CREATE TABLE IF NOT EXISTS pagos (
-            id SERIAL PRIMARY KEY,
-            cliente_id INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
-            fecha TEXT NOT NULL,
-            tipo TEXT NOT NULL,
-            monto DOUBLE PRECISION NOT NULL DEFAULT 0,
-            seguro DOUBLE PRECISION NOT NULL DEFAULT 0,
-            monto_entregado DOUBLE PRECISION NOT NULL DEFAULT 0,
-            interes_mensual DOUBLE PRECISION NOT NULL DEFAULT 0,
-            frecuencia TEXT DEFAULT 'mensual'
-        )
-        """
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS pagos (
+        id SERIAL PRIMARY KEY,
+        cliente_id INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+        fecha DATE NOT NULL,
+        tipo TEXT DEFAULT 'abono',
+        monto NUMERIC DEFAULT 0,
+        seguro NUMERIC DEFAULT 0,
+        monto_entregado NUMERIC DEFAULT 0,
+        interes_mensual NUMERIC DEFAULT 0,
+        frecuencia TEXT DEFAULT 'mensual',
+        created_at TIMESTAMP DEFAULT NOW()
     )
+    """)
+
+    # Mini-migraciones Postgres (ADD COLUMN IF NOT EXISTS)
+    cur.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS codigo_postal TEXT;")
+    cur.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS tipo_cobro TEXT DEFAULT 'mensual';")
+    cur.execute("ALTER TABLE pagos ADD COLUMN IF NOT EXISTS frecuencia TEXT DEFAULT 'mensual';")
+    cur.execute("ALTER TABLE pagos ADD COLUMN IF NOT EXISTS monto_entregado NUMERIC DEFAULT 0;")
+    cur.execute("ALTER TABLE pagos ADD COLUMN IF NOT EXISTS interes_mensual NUMERIC DEFAULT 0;")
+
+    conn.commit()
 
 
 def init_db():
     """
-    Crea tablas en SQLite o Postgres según exista DATABASE_URL.
+    Inicializa DB según backend:
+    - Postgres si DATABASE_URL es postgres*
+    - Si falla y ALLOW_SQLITE_FALLBACK=1, cae a SQLite para no tumbar Render.
     """
     if using_postgres():
-        _create_tables_postgres()
-    else:
-        _create_tables_sqlite()
+        try:
+            with get_conn() as conn:
+                _create_tables_postgres(conn)
+            return
+        except Exception:
+            if not ALLOW_SQLITE_FALLBACK:
+                raise
+            # fallback
+            with get_conn() as conn:
+                _create_tables_sqlite(conn)
+            return
+
+    with get_conn() as conn:
+        _create_tables_sqlite(conn)
 
 
-# =========================
-# Admin bootstrap
-# =========================
 def ensure_admin(username: str, password: str):
-    """
-    Crea el admin si no existe.
-    """
     if not username or not password:
         return
 
-    row = execute(
-        "SELECT id FROM usuarios WHERE username = %s" if using_postgres() else "SELECT id FROM usuarios WHERE username = ?",
-        (username,),
-        fetchone=True,
-    )
+    with get_conn() as conn:
+        cur = conn.cursor()
 
-    if row:
-        return
+        # sqlite devuelve Row; postgres devuelve dict_row (ya dict)
+        def _fetchone():
+            r = cur.fetchone()
+            if r is None:
+                return None
+            try:
+                return dict(r)
+            except Exception:
+                return r
 
-    if using_postgres():
-        execute(
-            "INSERT INTO usuarios (username, password, role) VALUES (%s, %s, %s)",
-            (username, password, "admin"),
-        )
-    else:
-        execute(
-            "INSERT INTO usuarios (username, password, role) VALUES (?, ?, ?)",
-            (username, password, "admin"),
-        )
+        # Buscar admin
+        try:
+            cur.execute("SELECT id FROM usuarios WHERE username = %s", (username,))
+        except Exception:
+            cur.execute("SELECT id FROM usuarios WHERE username = ?", (username,))
+
+        row = _fetchone()
+        if row:
+            return
+
+        # Insertar admin
+        try:
+            cur.execute(
+                "INSERT INTO usuarios (username, password, role) VALUES (%s, %s, %s)",
+                (username, password, "admin"),
+            )
+        except Exception:
+            cur.execute(
+                "INSERT INTO usuarios (username, password, role) VALUES (?, ?, ?)",
+                (username, password, "admin"),
+            )
