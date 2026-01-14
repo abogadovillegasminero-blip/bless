@@ -2,15 +2,31 @@
 import os
 import sqlite3
 from contextlib import contextmanager
-from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
+from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 
+import psycopg
+from psycopg.rows import dict_row
+
+
+# -----------------------------
+# Config
+# -----------------------------
 DB_PATH = os.getenv("DB_PATH", "bless.db")
-DATABASE_URL = os.getenv("DATABASE_URL")  # Render Postgres (usa Internal Database URL)
+
+# En Render pon DATABASE_URL = (Internal Database URL) de tu Postgres "bless-db"
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+
 
 def db_kind() -> str:
+    """Retorna 'postgres' si hay DATABASE_URL, si no 'sqlite'."""
     return "postgres" if DATABASE_URL else "sqlite"
 
+
 def _normalize_database_url(url: str) -> str:
+    """
+    psycopg3 acepta postgresql:// y normalmente también postgres://, pero
+    normalizamos y forzamos sslmode=require si no viene.
+    """
     if not url:
         return url
 
@@ -19,117 +35,124 @@ def _normalize_database_url(url: str) -> str:
 
     parsed = urlparse(url)
     q = dict(parse_qsl(parsed.query, keep_blank_values=True))
+
+    # Render suele funcionar con sslmode=require para URLs externas.
+    # Para Internal URL no estorba si ya viene; si no viene, lo añadimos.
     if "sslmode" not in q:
         q["sslmode"] = "require"
-    new_query = urlencode(q, doseq=True)
-    return urlunparse(parsed._replace(query=new_query))
+
+    parsed = parsed._replace(query=urlencode(q))
+    return urlunparse(parsed)
+
 
 def _adapt_sql(sql: str) -> str:
-    # Convierte placeholders sqlite (?) a psycopg (%s) cuando estás en Postgres
+    """
+    Evita el error: "query has 0 placeholders but 1 parameters were passed"
+    cuando el código manda '?' pero Postgres requiere '%s', y viceversa.
+    """
     if db_kind() == "postgres":
-        return sql.replace("?", "%s")
-    return sql
+        if "?" in sql and "%s" not in sql:
+            return sql.replace("?", "%s")
+        return sql
+    else:
+        # sqlite3 usa '?'
+        if "%s" in sql and "?" not in sql:
+            return sql.replace("%s", "?")
+        return sql
 
-class CursorWrapper:
-    def __init__(self, cur, kind: str):
-        self._cur = cur
-        self._kind = kind
-
-    def execute(self, sql: str, params=None):
-        if params is None:
-            params = ()
-        sql = _adapt_sql(sql)
-        return self._cur.execute(sql, params)
-
-    def executemany(self, sql: str, seq_params):
-        sql = _adapt_sql(sql)
-        return self._cur.executemany(sql, seq_params)
-
-    def fetchone(self):
-        return self._cur.fetchone()
-
-    def fetchall(self):
-        return self._cur.fetchall()
-
-    def __getattr__(self, name):
-        return getattr(self._cur, name)
-
-class ConnWrapper:
-    def __init__(self, conn, kind: str):
-        self._conn = conn
-        self._kind = kind
-
-    def cursor(self):
-        if self._kind == "postgres":
-            from psycopg.rows import dict_row
-            cur = self._conn.cursor(row_factory=dict_row)
-            return CursorWrapper(cur, self._kind)
-
-        cur = self._conn.cursor()
-        return CursorWrapper(cur, self._kind)
-
-    def commit(self):
-        return self._conn.commit()
-
-    def rollback(self):
-        return self._conn.rollback()
-
-    def close(self):
-        return self._conn.close()
-
-    def __getattr__(self, name):
-        return getattr(self._conn, name)
-
-def get_connection():
-    if db_kind() == "postgres":
-        import psycopg
-        url = _normalize_database_url(DATABASE_URL)
-        conn = psycopg.connect(url)
-        return ConnWrapper(conn, "postgres")
-
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return ConnWrapper(conn, "sqlite")
 
 @contextmanager
 def get_conn():
-    conn = get_connection()
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
+    """
+    Context manager de conexión. Devuelve:
+    - sqlite: sqlite3.Connection (row_factory = sqlite3.Row)
+    - postgres: psycopg.Connection (row_factory = dict_row)
+    """
+    if db_kind() == "sqlite":
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
         try:
-            conn.rollback()
-        except Exception:
-            pass
-        raise
-    finally:
-        try:
+            yield conn
+        finally:
             conn.close()
-        except Exception:
-            pass
+    else:
+        url = _normalize_database_url(DATABASE_URL)
+        conn = psycopg.connect(url, row_factory=dict_row)
+        try:
+            yield conn
+        finally:
+            conn.close()
 
-def execute(sql: str, params=None):
+
+# Compatibilidad con imports antiguos: from app.db import get_connection
+def get_connection():
+    """
+    Devuelve una conexión ABIERTA (sin context manager).
+    Preferir get_conn() salvo que sea estrictamente necesario.
+    """
+    if db_kind() == "sqlite":
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        return conn
+    url = _normalize_database_url(DATABASE_URL)
+    return psycopg.connect(url, row_factory=dict_row)
+
+
+def execute(sql: str, params=None) -> None:
+    sql = _adapt_sql(sql)
+    params = [] if params is None else params
+
     with get_conn() as conn:
         cur = conn.cursor()
-        cur.execute(sql, params or ())
-        return cur
+        cur.execute(sql, params)
+        conn.commit()
 
-def fetch_one(sql: str, params=None):
-    cur = execute(sql, params)
-    return cur.fetchone()
 
 def fetch_all(sql: str, params=None):
-    cur = execute(sql, params)
-    return cur.fetchall()
+    sql = _adapt_sql(sql)
+    params = [] if params is None else params
 
-def init_db():
-    if db_kind() == "postgres":
-        _create_tables_postgres()
-    else:
-        _create_tables_sqlite()
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(sql, params)
+        rows = cur.fetchall()
 
-def _create_tables_sqlite():
+        if db_kind() == "sqlite":
+            return [dict(r) for r in rows]
+        # postgres ya viene como dict por dict_row
+        return rows
+
+
+def fetch_one(sql: str, params=None):
+    sql = _adapt_sql(sql)
+    params = [] if params is None else params
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(sql, params)
+        row = cur.fetchone()
+
+        if row is None:
+            return None
+        if db_kind() == "sqlite":
+            return dict(row)
+        return row
+
+
+# -----------------------------
+# Schema / Migrations
+# -----------------------------
+def _ensure_sqlite_column(table: str, column: str, coltype: str) -> None:
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(f"PRAGMA table_info({table})")
+        cols = [r[1] for r in cur.fetchall()]  # name está en índice 1
+        if column not in cols:
+            cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
+            conn.commit()
+
+
+def _ensure_sqlite_tables():
     with get_conn() as conn:
         cur = conn.cursor()
 
@@ -149,8 +172,9 @@ def _create_tables_sqlite():
             documento TEXT,
             telefono TEXT,
             direccion TEXT,
-            tipo_cobro TEXT DEFAULT 'mensual',
+            codigo_postal TEXT,
             observaciones TEXT,
+            tipo_cobro TEXT DEFAULT 'mensual',
             created_at TEXT DEFAULT (datetime('now'))
         )
         """)
@@ -161,18 +185,24 @@ def _create_tables_sqlite():
             cliente_id INTEGER NOT NULL,
             fecha TEXT NOT NULL,
             valor REAL NOT NULL,
-            observaciones TEXT,
-            created_at TEXT DEFAULT (datetime('now'))
+            descripcion TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY(cliente_id) REFERENCES clientes(id)
         )
         """)
 
-        # Migración segura: agrega tipo_cobro si faltaba
-        cur.execute("PRAGMA table_info(clientes)")
-        cols = [r["name"] for r in cur.fetchall()]
-        if "tipo_cobro" not in cols:
-            cur.execute("ALTER TABLE clientes ADD COLUMN tipo_cobro TEXT DEFAULT 'mensual'")
+        conn.commit()
 
-def _create_tables_postgres():
+    # columnas que pueden faltar si vienes de versiones anteriores
+    _ensure_sqlite_column("clientes", "tipo_cobro", "TEXT DEFAULT 'mensual'")
+    _ensure_sqlite_column("clientes", "codigo_postal", "TEXT")
+    _ensure_sqlite_column("clientes", "observaciones", "TEXT")
+    _ensure_sqlite_column("clientes", "direccion", "TEXT")
+    _ensure_sqlite_column("clientes", "documento", "TEXT")
+    _ensure_sqlite_column("clientes", "telefono", "TEXT")
+
+
+def _ensure_postgres_tables():
     with get_conn() as conn:
         cur = conn.cursor()
 
@@ -192,8 +222,9 @@ def _create_tables_postgres():
             documento TEXT,
             telefono TEXT,
             direccion TEXT,
-            tipo_cobro TEXT DEFAULT 'mensual',
+            codigo_postal TEXT,
             observaciones TEXT,
+            tipo_cobro TEXT DEFAULT 'mensual',
             created_at TIMESTAMPTZ DEFAULT NOW()
         )
         """)
@@ -203,22 +234,28 @@ def _create_tables_postgres():
             id SERIAL PRIMARY KEY,
             cliente_id INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
             fecha DATE NOT NULL,
-            valor NUMERIC NOT NULL,
-            observaciones TEXT,
+            valor NUMERIC(14,2) NOT NULL,
+            descripcion TEXT,
             created_at TIMESTAMPTZ DEFAULT NOW()
         )
         """)
 
-        # Migración segura por si ya existía
+        # columnas/migraciones seguras
         cur.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS tipo_cobro TEXT DEFAULT 'mensual'")
+        cur.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS codigo_postal TEXT")
+        cur.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS observaciones TEXT")
+        cur.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS direccion TEXT")
+        cur.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS documento TEXT")
+        cur.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS telefono TEXT")
 
-def ensure_admin(username: str, password: str):
-    if not username or not password:
-        return
-    row = fetch_one("SELECT id FROM usuarios WHERE username = ?", (username,))
-    if row:
-        return
-    execute(
-        "INSERT INTO usuarios (username, password, role) VALUES (?, ?, ?)",
-        (username, password, "admin"),
-    )
+        conn.commit()
+
+
+def init_db():
+    """
+    Llamar en startup. Crea tablas y asegura columnas mínimas.
+    """
+    if db_kind() == "sqlite":
+        _ensure_sqlite_tables()
+    else:
+        _ensure_postgres_tables()
