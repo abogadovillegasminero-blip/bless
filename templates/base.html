@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-
   <title>Bless</title>
 
   <!-- PWA -->
@@ -23,11 +22,40 @@
   </style>
 
   <script>
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/static/sw.js").catch(() => {});
-      });
+    async function nukePWA() {
+      if (!("serviceWorker" in navigator)) return;
+
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const r of regs) {
+        try { await r.unregister(); } catch(e) {}
+      }
+
+      if (window.caches) {
+        const keys = await caches.keys();
+        for (const k of keys) {
+          try { await caches.delete(k); } catch(e) {}
+        }
+      }
     }
+
+    window.addEventListener("load", async () => {
+      const params = new URLSearchParams(location.search);
+      const nocache = params.get("nocache") === "1";
+
+      if (nocache) {
+        await nukePWA();
+        // recarga limpia sin query
+        const url = new URL(location.href);
+        url.searchParams.delete("nocache");
+        location.replace(url.toString());
+        return;
+      }
+
+      // registro normal
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("/static/sw.js").catch(() => {});
+      }
+    });
   </script>
 </head>
 
