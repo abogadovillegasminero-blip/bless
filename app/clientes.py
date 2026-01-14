@@ -10,29 +10,25 @@ templates = Jinja2Templates(directory="templates")
 
 TIPOS_COBRO = ["diario", "semanal", "quincenal", "mensual"]
 
-
 @router.get("/clientes")
 def listar_clientes(request: Request, edit_id: int | None = None):
     clientes = db.fetch_all("""
-        SELECT id, nombre, documento, telefono, direccion, observaciones, COALESCE(NULLIF(tipo_cobro,''), 'mensual') AS tipo_cobro
+        SELECT
+            id, nombre, documento, telefono, direccion, observaciones,
+            COALESCE(NULLIF(tipo_cobro,''), 'mensual') AS tipo_cobro
         FROM clientes
         ORDER BY nombre ASC
     """)
 
     edit_cliente = None
     if edit_id:
-        if db.db_kind() == "sqlite":
-            edit_cliente = db.fetch_one("""
-                SELECT id, nombre, documento, telefono, direccion, observaciones, COALESCE(NULLIF(tipo_cobro,''), 'mensual') AS tipo_cobro
-                FROM clientes
-                WHERE id = ?
-            """, [edit_id])
-        else:
-            edit_cliente = db.fetch_one("""
-                SELECT id, nombre, documento, telefono, direccion, observaciones, COALESCE(NULLIF(tipo_cobro,''), 'mensual') AS tipo_cobro
-                FROM clientes
-                WHERE id = %s
-            """, [edit_id])
+        edit_cliente = db.fetch_one("""
+            SELECT
+                id, nombre, documento, telefono, direccion, observaciones,
+                COALESCE(NULLIF(tipo_cobro,''), 'mensual') AS tipo_cobro
+            FROM clientes
+            WHERE id = ?
+        """, (edit_id,))
 
     return templates.TemplateResponse(
         "clientes.html",
@@ -43,7 +39,6 @@ def listar_clientes(request: Request, edit_id: int | None = None):
             "tipos_cobro": TIPOS_COBRO,
         }
     )
-
 
 @router.post("/clientes/crear")
 def crear_cliente(
@@ -58,19 +53,12 @@ def crear_cliente(
     if tipo_cobro not in TIPOS_COBRO:
         tipo_cobro = "mensual"
 
-    if db.db_kind() == "sqlite":
-        db.execute("""
-            INSERT INTO clientes (nombre, documento, telefono, direccion, observaciones, tipo_cobro)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, [nombre, documento, telefono, direccion, observaciones, tipo_cobro])
-    else:
-        db.execute("""
-            INSERT INTO clientes (nombre, documento, telefono, direccion, observaciones, tipo_cobro)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """, [nombre, documento, telefono, direccion, observaciones, tipo_cobro])
+    db.execute("""
+        INSERT INTO clientes (nombre, documento, telefono, direccion, observaciones, tipo_cobro)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (nombre, documento, telefono, direccion, observaciones, tipo_cobro))
 
     return RedirectResponse("/clientes", status_code=303)
-
 
 @router.post("/clientes/actualizar")
 def actualizar_cliente(
@@ -86,30 +74,19 @@ def actualizar_cliente(
     if tipo_cobro not in TIPOS_COBRO:
         tipo_cobro = "mensual"
 
-    if db.db_kind() == "sqlite":
-        db.execute("""
-            UPDATE clientes
-            SET nombre = ?, documento = ?, telefono = ?, direccion = ?, observaciones = ?, tipo_cobro = ?
-            WHERE id = ?
-        """, [nombre, documento, telefono, direccion, observaciones, tipo_cobro, cliente_id])
-    else:
-        db.execute("""
-            UPDATE clientes
-            SET nombre = %s, documento = %s, telefono = %s, direccion = %s, observaciones = %s, tipo_cobro = %s
-            WHERE id = %s
-        """, [nombre, documento, telefono, direccion, observaciones, tipo_cobro, cliente_id])
+    db.execute("""
+        UPDATE clientes
+        SET nombre = ?, documento = ?, telefono = ?, direccion = ?, observaciones = ?, tipo_cobro = ?
+        WHERE id = ?
+    """, (nombre, documento, telefono, direccion, observaciones, tipo_cobro, cliente_id))
 
     return RedirectResponse("/clientes", status_code=303)
 
-
 @router.post("/clientes/eliminar/{cliente_id}")
 def eliminar_cliente(cliente_id: int):
-    # OJO: si Postgres tiene FK con ON DELETE CASCADE en pagos, borra pagos automáticamente.
-    # En SQLite depende de PRAGMA foreign_keys; por seguridad, borra pagos primero.
+    # En Postgres ON DELETE CASCADE elimina pagos.
+    # En SQLite por seguridad, borra pagos primero.
     if db.db_kind() == "sqlite":
-        db.execute("DELETE FROM pagos WHERE cliente_id = ?", [cliente_id])
-        db.execute("DELETE FROM clientes WHERE id = ?", [cliente_id])
-    else:
-        db.execute("DELETE FROM clientes WHERE id = %s", [cliente_id])
-
+        db.execute("DELETE FROM pagos WHERE cliente_id = ?", (cliente_id,))
+    db.execute("DELETE FROM clientes WHERE id = ?", (cliente_id,))
     return RedirectResponse("/clientes", status_code=303)
